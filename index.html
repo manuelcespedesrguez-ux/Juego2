@@ -61,7 +61,7 @@
     }
     .stats{
       display:grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr;
+      grid-template-columns: repeat(5, 1fr);
       gap:10px;
       flex:1 1 auto;
       min-width:0;
@@ -307,6 +307,10 @@
         <div class="v"><span id="wave" class="glow">1</span></div>
       </div>
       <div class="stat">
+        <div class="k">Nivel</div>
+        <div class="v"><span id="lvl" class="glow">1</span> <span id="lvlIn" style="color:rgba(215,227,255,.72);font-weight:700;font-size:12px;"></span></div>
+      </div>
+      <div class="stat">
         <div class="k">Combo Fusión</div>
         <div class="v"><span id="combo" class="glow">x1</span></div>
       </div>
@@ -343,7 +347,7 @@
       <h2 class="title">Orbit Synthesis</h2>
       <p class="sub" id="overlayCopy">
         Lanza satélites desde el borde para capturar órbitas. Si dos del mismo nivel chocan, se fusionan (Nivel +1) y aumentan su rango y daño.
-        Resiste oleadas de asteroides atraídos por la gravedad. Si el Planeta Madre cae a 0, la partida termina.
+        Resiste oleadas de asteroides atraídos por la gravedad. Cada 30s sube el <b>Nivel</b> (más dificultad) y rota el tipo de Planeta Madre. Si el Planeta Madre cae a 0, la partida termina.
       </p>
       <div class="grid2">
         <div class="stat">
@@ -432,6 +436,8 @@
     const scoreEl = $('score');
     const bestEl = $('best');
     const waveEl = $('wave');
+    const lvlEl = $('lvl');
+    const lvlInEl = $('lvlIn');
     const comboEl = $('combo');
     const hpFillEl = $('hpFill');
     const hpTxtEl = $('hpTxt');
@@ -534,7 +540,19 @@
       comboTimer: 0,
       comboPeak: 1,
 
-      planet: { x:0, y:0, r:44, hp:100, hpMax:100, pulse:0 },
+      level: 1,
+      levelTimer: 0,
+      levelEvery: 30,
+
+      planet: {
+        x:0, y:0, r:44,
+        hp:100, hpMax:100,
+        pulse:0,
+        type: null,
+        upgradesTier: 0,
+        upgradesApplied: 0,
+        upgrades: { hpBonus: 0, regenBonus: 0, satAura: 0 }
+      },
 
       nextSatelliteLevel: 1,
       nextSatelliteSeed: 0,
@@ -625,18 +643,62 @@
       };
     }
 
-    function makeAsteroid(tier, x, y, vx, vy, wave){
-      const r = 10 + tier*2.2 + Math.min(6, wave*0.25);
-      const hp = 16 + tier*10 + wave*2.3;
+    function makeAsteroid(kind, tier, x, y, vx, vy, wave, level){
+      const baseR = 10 + tier*2.2 + Math.min(6, wave*0.25);
+      const baseHp = 16 + tier*10 + wave*2.3 + level*1.4;
+      const baseSpeedBias = 1 + wave*0.03 + tier*0.06 + level*0.045;
+
+      let r = baseR;
+      let hp = baseHp;
+      let speedBias = baseSpeedBias;
+      let impactMul = 1.0;
+      let scoreMul = 1.0;
+      let split = 0;
+
+      if (kind === 'runner'){
+        r *= 0.85;
+        hp *= 0.70;
+        speedBias *= 1.45;
+        impactMul = 0.85;
+        scoreMul = 0.95;
+      } else if (kind === 'tank'){
+        r *= 1.15;
+        hp *= 1.85;
+        speedBias *= 0.78;
+        impactMul = 1.25;
+        scoreMul = 1.25;
+      } else if (kind === 'splitter'){
+        r *= 1.00;
+        hp *= 1.05;
+        speedBias *= 1.05;
+        impactMul = 1.05;
+        scoreMul = 1.10;
+        split = 2;
+      } else if (kind === 'shard'){
+        r *= 0.70;
+        hp *= 0.42;
+        speedBias *= 1.55;
+        impactMul = 0.65;
+        scoreMul = 0.75;
+      } else {
+        kind = 'rock';
+      }
+
+      r = Math.max(6, r);
+      hp = Math.max(6, hp);
+
       const mass = Math.pow(r, 2) * 0.045;
-      const speedBias = 1 + wave*0.03 + tier*0.06;
       return {
+        kind,
         tier,
         x, y, vx: vx*speedBias, vy: vy*speedBias,
         r,
         mass,
         hp,
         hpMax: hp,
+        impactMul,
+        scoreMul,
+        split,
         spin: rand(0, Math.PI*2),
         alive: true
       };
@@ -685,7 +747,7 @@
       game.wave = w;
       game.waveSpawned = 0;
       game.waveAlive = 0;
-      const count = Math.floor(6 + w*1.6);
+      const count = Math.floor(6 + w*1.6 + (game.level-1)*0.9);
       game.waveToSpawn = clamp(count, 6, 42);
       game.waveSpawnTimer = 0;
       game.waveClearGrace = 0;
@@ -708,13 +770,22 @@
       const nx = dx/d, ny = dy/d;
       const tx = -ny, ty = nx;
       const w = game.wave;
+      const lvl = game.level;
       const speed = rand(36, 62) * (1 + w*0.028);
       const tangent = rand(-0.55, 0.55) * (0.9 + w*0.01);
       const vx = nx*speed + tx*speed*tangent;
       const vy = ny*speed + ty*speed*tangent;
 
-      const tier = clamp(Math.floor((w-1)/3) + (Math.random()<0.22 ? 1 : 0), 0, 4);
-      asteroids.push(makeAsteroid(tier, x, y, vx, vy, w));
+      const tier = clamp(Math.floor((w-1)/3) + (Math.random()<0.22 ? 1 : 0) + (lvl>6 && Math.random()<0.12 ? 1 : 0), 0, 5);
+
+      // Kind unlocks with level/time.
+      let kind = 'rock';
+      const p = Math.random();
+      if (lvl >= 2 && p < 0.18) kind = 'runner';
+      else if (lvl >= 4 && p < 0.32) kind = 'tank';
+      else if (lvl >= 6 && p < 0.46) kind = 'splitter';
+
+      asteroids.push(makeAsteroid(kind, tier, x, y, vx, vy, w, lvl));
       game.waveSpawned++;
       game.waveAlive++;
     }
@@ -808,7 +879,7 @@
       const r = Math.sqrt(Math.max(1e-6, r2));
       const nx = dx / r;
       const ny = dy / r;
-      const GM = 98000;
+      const GM = 98000 * (game.planet.type?.gravityMul || 1);
       const a = GM * inv;
       body.vx += nx * a * dt;
       body.vy += ny * a * dt;
@@ -840,6 +911,11 @@
     function satShoot(s, dt){
       s.cdTimer -= dt;
       if (s.cdTimer > 0) return;
+
+      const pt = game.planet.type || PLANET_TYPES[0];
+      const aura = game.planet.upgrades.satAura;
+      const dmgMul = pt.satDmgMul * (1 + aura);
+      const cdMul = clamp(pt.satCdMul * (1 - aura*0.65), 0.72, 1.25);
       let best = null;
       let bestD2 = Infinity;
       const range2 = s.range*s.range;
@@ -851,7 +927,7 @@
         if (d2 <= range2 && d2 < bestD2){ bestD2 = d2; best = a; }
       }
       if (!best) return;
-      const dmg = s.dmg * (1 + (game.wave-1)*0.01);
+      const dmg = s.dmg * dmgMul * (1 + (game.wave-1)*0.01 + (game.level-1)*0.006);
       best.hp -= dmg;
       const col = glowForLevel(s.level);
       addBullet(s.x, s.y, best.x, best.y, col);
@@ -864,7 +940,20 @@
       if (best.hp <= 0 && best.alive){
         best.alive = false;
         game.waveAlive = Math.max(0, game.waveAlive - 1);
-        const pts = Math.floor(28 + best.tier*18 + game.wave*2.2);
+
+        // Splitter spawns shards on death.
+        if (best.split > 0){
+          for (let n=0;n<best.split;n++){
+            const ang = rand(0, Math.PI*2);
+            const sp = rand(40, 90);
+            const vx2 = Math.cos(ang)*sp + best.vx*0.25;
+            const vy2 = Math.sin(ang)*sp + best.vy*0.25;
+            asteroids.push(makeAsteroid('shard', Math.max(0, best.tier-1), best.x + Math.cos(ang)*best.r*0.25, best.y + Math.sin(ang)*best.r*0.25, vx2, vy2, game.wave, game.level));
+            game.waveAlive++;
+          }
+        }
+
+        const pts = Math.floor((28 + best.tier*18 + game.wave*2.2 + (game.level-1)*2.0) * best.scoreMul);
         game.score += pts;
         addFloater(`+${pts}`, best.x, best.y, 'rgba(82,255,159,.95)');
         sfxPop();
@@ -875,7 +964,7 @@
         }
         game.shake.mag = Math.min(9, game.shake.mag + 1.35);
       }
-      s.cdTimer = s.cd;
+      s.cdTimer = s.cd * cdMul;
     }
 
     function damagePlanet(amount, atX, atY){
@@ -962,6 +1051,29 @@
     function update(dt){
       game.t += dt;
 
+      // Level difficulty ramps every N seconds.
+      game.levelTimer += dt;
+      if (game.levelTimer >= game.levelEvery){
+        game.levelTimer -= game.levelEvery;
+        game.level++;
+        lvlEl.textContent = String(game.level);
+        game.planet.type = planetTypeForLevel(game.level);
+        applyPlanetType();
+        addFloater(`NIVEL ${game.level} (${game.planet.type.name})`, game.planet.x, game.planet.y - game.planet.r - 60, 'rgba(255,207,90,.95)');
+      }
+
+      // UI: time until next level
+      const inS = Math.ceil(game.levelEvery - game.levelTimer);
+      lvlInEl.textContent = `(+${inS}s)`;
+
+      // Planet regen + score-based upgrades
+      applyScoreUpgrades();
+      const pt = game.planet.type || PLANET_TYPES[0];
+      const regen = (pt.regen + game.planet.upgrades.regenBonus);
+      if (regen > 0 && game.planet.hp > 0){
+        game.planet.hp = Math.min(game.planet.hpMax, game.planet.hp + regen*dt);
+      }
+
       if (game.comboTimer > 0){
         game.comboTimer -= dt;
         if (game.comboTimer <= 0){ game.comboTimer = 0; game.combo = 1; }
@@ -969,7 +1081,7 @@
 
       if (game.waveSpawned < game.waveToSpawn){
         game.waveSpawnTimer -= dt;
-        const cadence = clamp(0.62 - game.wave*0.018, 0.18, 0.62);
+        const cadence = clamp(0.62 - game.wave*0.018 - (game.level-1)*0.006, 0.14, 0.62);
         if (game.waveSpawnTimer <= 0){
           game.waveSpawnTimer = cadence * rand(0.78, 1.22);
           spawnAsteroid();
@@ -1025,7 +1137,7 @@
         if (d < (game.planet.r + a.r)){
           a.alive = false;
           game.waveAlive = Math.max(0, game.waveAlive - 1);
-          const impact = 10 + a.tier*6 + game.wave*0.25;
+          const impact = (10 + a.tier*6 + game.wave*0.25 + (game.level-1)*0.8) * (a.impactMul || 1);
           damagePlanet(impact, a.x, a.y);
         }
         if (a.x < -300 || a.x > W+300 || a.y < -300 || a.y > H+300){
@@ -1152,9 +1264,10 @@
       ctx.beginPath(); ctx.arc(px, py, pr+34, 0, Math.PI*2); ctx.fill();
       ctx.restore();
 
+      const pt = game.planet.type || PLANET_TYPES[0];
       const grd = ctx.createRadialGradient(px-pr*0.35, py-pr*0.35, pr*0.2, px, py, pr*1.2);
       grd.addColorStop(0, 'rgba(255,255,255,.22)');
-      grd.addColorStop(0.35, 'rgba(79,243,255,.14)');
+      grd.addColorStop(0.35, pt.tintA);
       grd.addColorStop(1, 'rgba(20,30,55,1)');
       ctx.fillStyle = grd;
       ctx.strokeStyle = 'rgba(120,170,255,.20)';
@@ -1193,9 +1306,14 @@
         body.addColorStop(0.55, 'rgba(90,110,160,.35)');
         body.addColorStop(1, 'rgba(25,30,46,1)');
         ctx.fillStyle = body;
-        ctx.strokeStyle = 'rgba(255,79,240,.18)';
+        let edge = 'rgba(255,79,240,.18)';
+        if (a.kind === 'runner') edge = 'rgba(79,243,255,.22)';
+        if (a.kind === 'tank') edge = 'rgba(255,79,240,.26)';
+        if (a.kind === 'splitter') edge = 'rgba(255,207,90,.22)';
+        if (a.kind === 'shard') edge = 'rgba(82,255,159,.18)';
+        ctx.strokeStyle = edge;
         ctx.lineWidth = 2;
-        ctx.shadowColor = 'rgba(255,79,240,.18)';
+        ctx.shadowColor = edge;
         ctx.shadowBlur = 10;
         ctx.beginPath();
         const bumps = 10;
@@ -1401,12 +1519,24 @@
       game.over = false;
       game.shake.mag = 0;
 
+      game.level = 1;
+      game.levelTimer = 0;
+      lvlEl.textContent = '1';
+
       game.planet.x = W*0.5;
       game.planet.y = H*0.55;
       game.planet.r = clamp(Math.min(W,H) * 0.055, 34, 56);
+      game.planet.upgradesTier = 0;
+      game.planet.upgradesApplied = 0;
+      game.planet.upgrades.hpBonus = 0;
+      game.planet.upgrades.regenBonus = 0;
+      game.planet.upgrades.satAura = 0;
+      game.planet.type = planetTypeForLevel(game.level);
       game.planet.hpMax = 100;
       game.planet.hp = 100;
       game.planet.pulse = 0;
+
+      applyPlanetType();
 
       rollNextSatellite();
       startWave(1);
@@ -1445,7 +1575,7 @@
     startBtn.addEventListener('click', () => {
       overlayEl.querySelector('.title').textContent = 'Orbit Synthesis';
       overlayCopyEl.textContent =
-        'Lanza satélites desde el borde para capturar órbitas. Si dos del mismo nivel chocan, se fusionan (Nivel +1) y aumentan su rango y daño. Resiste oleadas de asteroides atraídos por la gravedad. Si el Planeta Madre cae a 0, la partida termina.';
+        'Lanza satélites desde el borde para capturar órbitas. Si dos del mismo nivel chocan, se fusionan (Nivel +1) y aumentan su rango y daño. Resiste oleadas de asteroides atraídos por la gravedad. Cada 30s sube el Nivel (más dificultad) y rota el tipo de Planeta Madre. Si el Planeta Madre cae a 0, la partida termina.';
       startBtn.textContent = 'Jugar';
       startGame();
     });
@@ -1464,3 +1594,81 @@
   </script>
 </body>
 </html>
+    const PLANET_TYPES = [
+      {
+        id: 'core',
+        name: 'Nucleo',
+        hpMul: 1.0,
+        regen: 0.0,
+        satCdMul: 1.0,
+        satDmgMul: 1.0,
+        gravityMul: 1.0,
+        tintA: 'rgba(79,243,255,.14)',
+        tintB: 'rgba(255,79,240,.06)'
+      },
+      {
+        id: 'aegis',
+        name: 'Aegis',
+        hpMul: 1.2,
+        regen: 0.35, // hp per second
+        satCdMul: 1.02,
+        satDmgMul: 1.0,
+        gravityMul: 1.0,
+        tintA: 'rgba(82,255,159,.14)',
+        tintB: 'rgba(79,243,255,.06)'
+      },
+      {
+        id: 'reactor',
+        name: 'Reactor',
+        hpMul: 0.95,
+        regen: 0.0,
+        satCdMul: 0.92,
+        satDmgMul: 1.07,
+        gravityMul: 1.0,
+        tintA: 'rgba(255,207,90,.12)',
+        tintB: 'rgba(255,79,240,.06)'
+      },
+      {
+        id: 'well',
+        name: 'Pozo',
+        hpMul: 1.05,
+        regen: 0.0,
+        satCdMul: 1.0,
+        satDmgMul: 1.0,
+        gravityMul: 1.18,
+        tintA: 'rgba(160,120,255,.12)',
+        tintB: 'rgba(79,243,255,.06)'
+      }
+    ];
+
+    function planetTypeForLevel(level){
+      return PLANET_TYPES[(level - 1) % PLANET_TYPES.length];
+    }
+
+    function applyPlanetType(){
+      const t = game.planet.type;
+      // Recompute max HP based on base + upgrades.
+      const base = 100;
+      const up = game.planet.upgrades;
+      const max = Math.round(base * t.hpMul + up.hpBonus);
+      const prevPct = game.planet.hpMax > 0 ? (game.planet.hp / game.planet.hpMax) : 1;
+      game.planet.hpMax = max;
+      game.planet.hp = clamp(Math.round(prevPct * max), 0, max);
+    }
+
+    function applyScoreUpgrades(){
+      // Every threshold grants a small automatic improvement.
+      const tier = Math.floor(game.score / 1200);
+      if (tier <= game.planet.upgradesTier) return;
+      const diff = tier - game.planet.upgradesTier;
+      game.planet.upgradesTier = tier;
+      for (let i=0;i<diff;i++){
+        // Simple deterministic rotation: HP -> regen -> sat boost -> repeat.
+        const step = (game.planet.upgradesApplied++) % 3;
+        if (step === 0) game.planet.upgrades.hpBonus += 14;
+        if (step === 1) game.planet.upgrades.regenBonus += 0.18;
+        if (step === 2) game.planet.upgrades.satAura += 0.04; // +4% dmg/cd aura
+      }
+      applyPlanetType();
+      addFloater('MEJORA!', game.planet.x, game.planet.y - game.planet.r - 58, 'rgba(82,255,159,.95)');
+    }
