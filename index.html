@@ -392,6 +392,26 @@
   (() => {
     'use strict';
 
+    // If anything goes wrong at runtime, show a readable overlay.
+    window.addEventListener('error', (ev) => {
+      try{
+        const msg = (ev && ev.message) ? String(ev.message) : 'Error desconocido';
+        const src = (ev && ev.filename) ? String(ev.filename).split('/').pop() : '';
+        const line = (ev && ev.lineno) ? `:${ev.lineno}` : '';
+        const col = (ev && ev.colno) ? `:${ev.colno}` : '';
+        const where = src ? `\n(${src}${line}${col})` : '';
+        const overlayEl = document.getElementById('overlay');
+        const overlayCopyEl = document.getElementById('overlayCopy');
+        const startBtn = document.getElementById('startBtn');
+        if (overlayEl && overlayCopyEl && startBtn){
+          overlayEl.classList.add('show');
+          overlayEl.querySelector('.title').textContent = 'Error';
+          overlayCopyEl.textContent = msg + where;
+          startBtn.textContent = 'Reintentar';
+        }
+      }catch{}
+    });
+
     // ---------- Utils ----------
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const lerp = (a, b, t) => a + (b - a) * t;
@@ -578,7 +598,7 @@
     let bgCtx = null;
     function buildStars(){
       // Build + draw a static background once per resize.
-      const count = Math.floor(clamp((W*H) / 11000, 50, 200));
+      const count = Math.max(1, Math.floor(clamp((W*H) / 11000, 50, 200)));
       stars = new Array(count).fill(0).map(() => {
         const z = Math.random();
         const r = lerp(0.45, 1.5, Math.pow(z, 2.6));
@@ -1064,7 +1084,7 @@
 
       // UI: time until next level
       const inS = Math.ceil(game.levelEvery - game.levelTimer);
-      lvlInEl.textContent = `(+${inS}s)`;
+      if (lvlInEl) lvlInEl.textContent = `(+${inS}s)`;
 
       // Planet regen + score-based upgrades
       applyScoreUpgrades();
@@ -1224,15 +1244,17 @@
 
       // Tiny twinkle overlay (small subset)
       const t = game.t;
-      const twCount = Math.min(26, stars.length);
-      for (let i=0;i<twCount;i++){
-        const s = stars[(i*13 + ((t*30)|0)) % stars.length];
-        const tw = 0.65 + 0.35*Math.sin(t*s.tw + s.ph);
-        ctx.globalAlpha = (s.a * 0.9) * tw;
-        ctx.fillStyle = 'rgba(205,225,255,1)';
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
-        ctx.fill();
+      if (stars.length > 0){
+        const twCount = Math.min(26, stars.length);
+        for (let i=0;i<twCount;i++){
+          const s = stars[(i*13 + ((t*30)|0)) % stars.length];
+          const tw = 0.65 + 0.35*Math.sin(t*s.tw + s.ph);
+          ctx.globalAlpha = (s.a * 0.9) * tw;
+          ctx.fillStyle = 'rgba(205,225,255,1)';
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+          ctx.fill();
+        }
       }
       ctx.globalAlpha = 1;
 
