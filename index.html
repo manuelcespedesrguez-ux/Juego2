@@ -592,6 +592,83 @@
     const particles = [];
     const floaters = [];
 
+    // ---------- Planet Types + Score Upgrades ----------
+    const PLANET_TYPES = [
+      {
+        id: 'core',
+        name: 'Nucleo',
+        hpMul: 1.0,
+        regen: 0.0,
+        satCdMul: 1.0,
+        satDmgMul: 1.0,
+        gravityMul: 1.0,
+        tintA: 'rgba(79,243,255,.14)',
+        tintB: 'rgba(255,79,240,.06)'
+      },
+      {
+        id: 'aegis',
+        name: 'Aegis',
+        hpMul: 1.2,
+        regen: 0.35,
+        satCdMul: 1.02,
+        satDmgMul: 1.0,
+        gravityMul: 1.0,
+        tintA: 'rgba(82,255,159,.14)',
+        tintB: 'rgba(79,243,255,.06)'
+      },
+      {
+        id: 'reactor',
+        name: 'Reactor',
+        hpMul: 0.95,
+        regen: 0.0,
+        satCdMul: 0.92,
+        satDmgMul: 1.07,
+        gravityMul: 1.0,
+        tintA: 'rgba(255,207,90,.12)',
+        tintB: 'rgba(255,79,240,.06)'
+      },
+      {
+        id: 'well',
+        name: 'Pozo',
+        hpMul: 1.05,
+        regen: 0.0,
+        satCdMul: 1.0,
+        satDmgMul: 1.0,
+        gravityMul: 1.18,
+        tintA: 'rgba(160,120,255,.12)',
+        tintB: 'rgba(79,243,255,.06)'
+      }
+    ];
+
+    function planetTypeForLevel(level){
+      return PLANET_TYPES[(level - 1) % PLANET_TYPES.length];
+    }
+
+    function applyPlanetType(){
+      const t = game.planet.type || PLANET_TYPES[0];
+      const base = 100;
+      const up = game.planet.upgrades;
+      const max = Math.round(base * t.hpMul + up.hpBonus);
+      const prevPct = game.planet.hpMax > 0 ? (game.planet.hp / game.planet.hpMax) : 1;
+      game.planet.hpMax = max;
+      game.planet.hp = clamp(prevPct * max, 0, max);
+    }
+
+    function applyScoreUpgrades(){
+      const tier = Math.floor(game.score / 1200);
+      if (tier <= game.planet.upgradesTier) return;
+      const diff = tier - game.planet.upgradesTier;
+      game.planet.upgradesTier = tier;
+      for (let i=0;i<diff;i++){
+        const step = (game.planet.upgradesApplied++) % 3;
+        if (step === 0) game.planet.upgrades.hpBonus += 14;
+        if (step === 1) game.planet.upgrades.regenBonus += 0.18;
+        if (step === 2) game.planet.upgrades.satAura += 0.04;
+      }
+      applyPlanetType();
+      addFloater('MEJORA!', game.planet.x, game.planet.y - game.planet.r - 58, 'rgba(82,255,159,.95)');
+    }
+
     // ---------- Starfield (cached) ----------
     let stars = [];
     let bgCanvas = null;
@@ -1616,81 +1693,3 @@
   </script>
 </body>
 </html>
-    const PLANET_TYPES = [
-      {
-        id: 'core',
-        name: 'Nucleo',
-        hpMul: 1.0,
-        regen: 0.0,
-        satCdMul: 1.0,
-        satDmgMul: 1.0,
-        gravityMul: 1.0,
-        tintA: 'rgba(79,243,255,.14)',
-        tintB: 'rgba(255,79,240,.06)'
-      },
-      {
-        id: 'aegis',
-        name: 'Aegis',
-        hpMul: 1.2,
-        regen: 0.35, // hp per second
-        satCdMul: 1.02,
-        satDmgMul: 1.0,
-        gravityMul: 1.0,
-        tintA: 'rgba(82,255,159,.14)',
-        tintB: 'rgba(79,243,255,.06)'
-      },
-      {
-        id: 'reactor',
-        name: 'Reactor',
-        hpMul: 0.95,
-        regen: 0.0,
-        satCdMul: 0.92,
-        satDmgMul: 1.07,
-        gravityMul: 1.0,
-        tintA: 'rgba(255,207,90,.12)',
-        tintB: 'rgba(255,79,240,.06)'
-      },
-      {
-        id: 'well',
-        name: 'Pozo',
-        hpMul: 1.05,
-        regen: 0.0,
-        satCdMul: 1.0,
-        satDmgMul: 1.0,
-        gravityMul: 1.18,
-        tintA: 'rgba(160,120,255,.12)',
-        tintB: 'rgba(79,243,255,.06)'
-      }
-    ];
-
-    function planetTypeForLevel(level){
-      return PLANET_TYPES[(level - 1) % PLANET_TYPES.length];
-    }
-
-    function applyPlanetType(){
-      const t = game.planet.type;
-      // Recompute max HP based on base + upgrades.
-      const base = 100;
-      const up = game.planet.upgrades;
-      const max = Math.round(base * t.hpMul + up.hpBonus);
-      const prevPct = game.planet.hpMax > 0 ? (game.planet.hp / game.planet.hpMax) : 1;
-      game.planet.hpMax = max;
-      game.planet.hp = clamp(Math.round(prevPct * max), 0, max);
-    }
-
-    function applyScoreUpgrades(){
-      // Every threshold grants a small automatic improvement.
-      const tier = Math.floor(game.score / 1200);
-      if (tier <= game.planet.upgradesTier) return;
-      const diff = tier - game.planet.upgradesTier;
-      game.planet.upgradesTier = tier;
-      for (let i=0;i<diff;i++){
-        // Simple deterministic rotation: HP -> regen -> sat boost -> repeat.
-        const step = (game.planet.upgradesApplied++) % 3;
-        if (step === 0) game.planet.upgrades.hpBonus += 14;
-        if (step === 1) game.planet.upgrades.regenBonus += 0.18;
-        if (step === 2) game.planet.upgrades.satAura += 0.04; // +4% dmg/cd aura
-      }
-      applyPlanetType();
-      addFloater('MEJORA!', game.planet.x, game.planet.y - game.planet.r - 58, 'rgba(82,255,159,.95)');
-    }
