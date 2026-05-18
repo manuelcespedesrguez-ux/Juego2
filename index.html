@@ -299,7 +299,7 @@
         <div class="v"><span id="score" class="glow">0</span></div>
       </div>
       <div class="stat">
-        <div class="k">Mejor Nivel</div>
+        <div class="k">Mejor Escudo</div>
         <div class="v"><span id="best" class="glow">1</span></div>
       </div>
       <div class="stat">
@@ -315,7 +315,7 @@
         <div class="v"><span id="combo" class="glow">x1</span></div>
       </div>
       <div class="hpWrap">
-        <div class="hpLabel">Planeta Madre</div>
+        <div class="hpLabel">Nave Madre</div>
         <div class="hpBar">
           <div class="hpFill" id="hpFill"></div>
           <div class="hpPulse" id="hpPulse"></div>
@@ -339,15 +339,16 @@
 
   <div class="hint" id="hint" aria-hidden="true">
     <span class="pill">Orbit Synthesis</span>
-    Arrastra para apuntar y suelta para lanzar desde el borde. Fusiona iguales. Defiende el planeta.
+    Arrastra y suelta para lanzar ESCUDOS. Fusiona iguales. Protege la Nave Madre.
   </div>
 
   <div class="overlay show" id="overlay" role="dialog" aria-modal="true">
     <div class="card">
       <h2 class="title">Orbit Synthesis</h2>
       <p class="sub" id="overlayCopy">
-        Lanza satélites desde el borde para capturar órbitas. Si dos del mismo nivel chocan, se fusionan (Nivel +1) y aumentan su rango y daño.
-        Resiste oleadas de asteroides atraídos por la gravedad. Cada 30s sube el <b>Nivel</b> (más dificultad) y rota el tipo de Planeta Madre. Si el Planeta Madre cae a 0, la partida termina.
+        Lanza módulos de <b>escudo</b> desde el borde: entran en órbita y bloquean asteroides por contacto.
+        Si dos del mismo nivel chocan, <b>se fusionan</b> (Nivel +1) y el escudo se vuelve más grande y resistente.
+        Cada 30s sube el <b>Nivel</b> (más dificultad) y rota el tipo de Nave Madre. Si su vida llega a 0, la partida termina.
       </p>
       <div class="grid2">
         <div class="stat">
@@ -356,11 +357,11 @@
         </div>
         <div class="stat">
           <div class="k">Objetivo</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Defiende el planeta</div>
+          <div class="v" style="font-size:13px;font-weight:700;">Protege la nave</div>
         </div>
         <div class="stat">
           <div class="k">Fusión</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Iguales → Nivel +1</div>
+          <div class="v" style="font-size:13px;font-weight:700;">Iguales → +1</div>
         </div>
         <div class="stat">
           <div class="k">Puntuación</div>
@@ -368,7 +369,7 @@
         </div>
       </div>
       <p class="sub" style="margin-top:0">
-        Consejos: lanza con un poco de arrastre largo para meter tangente y crear mejores órbitas; busca que dos iguales choquen cerca del planeta para encadenar fusiones.
+        Consejos: lanza con un arrastre largo para entrar con tangente y formar una órbita. Busca que dos iguales choquen cerca de la nave para encadenar fusiones.
         Teclas: <b>H</b> ayuda, <b>S</b> sonido, <b>R</b> reiniciar tras perder.
       </p>
       <div class="grid2">
@@ -588,7 +589,6 @@
 
     const satellites = [];
     const asteroids = [];
-    const bullets = [];
     const particles = [];
     const floaters = [];
 
@@ -599,7 +599,6 @@
         name: 'Nucleo',
         hpMul: 1.0,
         regen: 0.0,
-        satCdMul: 1.0,
         satDmgMul: 1.0,
         gravityMul: 1.0,
         tintA: 'rgba(79,243,255,.14)',
@@ -610,7 +609,6 @@
         name: 'Aegis',
         hpMul: 1.2,
         regen: 0.35,
-        satCdMul: 1.02,
         satDmgMul: 1.0,
         gravityMul: 1.0,
         tintA: 'rgba(82,255,159,.14)',
@@ -621,7 +619,6 @@
         name: 'Reactor',
         hpMul: 0.95,
         regen: 0.0,
-        satCdMul: 0.92,
         satDmgMul: 1.07,
         gravityMul: 1.0,
         tintA: 'rgba(255,207,90,.12)',
@@ -632,7 +629,6 @@
         name: 'Pozo',
         hpMul: 1.05,
         regen: 0.0,
-        satCdMul: 1.0,
         satDmgMul: 1.0,
         gravityMul: 1.18,
         tintA: 'rgba(160,120,255,.12)',
@@ -667,6 +663,7 @@
       }
       applyPlanetType();
       addFloater('MEJORA!', game.planet.x, game.planet.y - game.planet.r - 58, 'rgba(82,255,159,.95)');
+      addFloater(`+HP ${game.planet.upgrades.hpBonus}  REGEN ${game.planet.upgrades.regenBonus.toFixed(1)}  AURA ${Math.round(game.planet.upgrades.satAura*100)}%`, game.planet.x, game.planet.y - game.planet.r - 38, 'rgba(215,227,255,.9)');
     }
 
     // ---------- Starfield (cached) ----------
@@ -719,22 +716,24 @@
 
     // ---------- Entities ----------
     function makeSatellite(level, x, y, vx, vy){
+      // Now a shield-drone module (contact defense).
       const baseR = 9.5;
       const r = baseR + (level-1) * 3.1;
       const mass = Math.pow(r, 2) * 0.035;
-      const range = 86 + (level-1)*18;
-      const dmg = 6 + (level-1)*3.2;
-      const cd = clamp(0.62 - (level-1)*0.03, 0.28, 0.62);
+      const hpMax = 18 + (level-1)*10;
+      const hitDmg = 10 + (level-1)*5.5;
+      const knock = 110 + (level-1)*16;
       return {
         level,
         x, y, vx, vy,
         r,
         mass,
-        range,
-        dmg,
-        cd,
-        cdTimer: rand(0, cd),
+        hp: hpMax,
+        hpMax,
+        hitDmg,
+        knock,
         mergeLock: 0,
+        hitLock: 0,
         spin: rand(0, Math.PI*2),
         alive: true
       };
@@ -801,7 +800,7 @@
       };
     }
 
-    const CAPS = { particles: 700, floaters: 80, bullets: 120 };
+    const CAPS = { particles: 700, floaters: 80 };
     function addParticle(x,y,vx,vy,life,sz,col,glow){
       if (particles.length >= CAPS.particles) return;
       particles.push({ x,y,vx,vy, life, max:life, sz, col, glow });
@@ -810,10 +809,7 @@
       if (floaters.length >= CAPS.floaters) return;
       floaters.push({ text, x,y, vx: rand(-18,18), vy: rand(-52,-86), life:0.95, max:0.95, col: col || 'rgba(215,227,255,.95)' });
     }
-    function addBullet(x1,y1,x2,y2, col){
-      if (bullets.length >= CAPS.bullets) return;
-      bullets.push({ x1,y1,x2,y2, life:0.08, max:0.08, col });
-    }
+    // bullets removed (shield contact gameplay)
 
     // ---------- Progression ----------
     function rollNextSatellite(){
@@ -1004,64 +1000,71 @@
       b.x += nx*push; b.y += ny*push;
     }
 
-    // ---------- Combat ----------
-    function satShoot(s, dt){
-      s.cdTimer -= dt;
-      if (s.cdTimer > 0) return;
+    // ---------- Combat (Shield Contact) ----------
+    function killAsteroid(a, byShieldLevel){
+      if (!a.alive) return;
+      a.alive = false;
+      game.waveAlive = Math.max(0, game.waveAlive - 1);
+
+      if (a.split > 0){
+        for (let n=0;n<a.split;n++){
+          const ang = rand(0, Math.PI*2);
+          const sp = rand(40, 90);
+          const vx2 = Math.cos(ang)*sp + a.vx*0.25;
+          const vy2 = Math.sin(ang)*sp + a.vy*0.25;
+          asteroids.push(makeAsteroid('shard', Math.max(0, a.tier-1), a.x + Math.cos(ang)*a.r*0.25, a.y + Math.sin(ang)*a.r*0.25, vx2, vy2, game.wave, game.level));
+          game.waveAlive++;
+        }
+      }
+
+      const pts = Math.floor((28 + a.tier*18 + game.wave*2.2 + (game.level-1)*2.0) * a.scoreMul * (1 + Math.max(0, byShieldLevel-1)*0.04));
+      game.score += pts;
+      addFloater(`+${pts}`, a.x, a.y, 'rgba(82,255,159,.95)');
+      sfxPop();
+      for (let k=0;k<14;k++){
+        const ang = rand(0, Math.PI*2);
+        const sp = rand(60, 210);
+        addParticle(a.x, a.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.22,0.5), rand(1.4,2.8), 'rgba(79,243,255,.55)', 'rgba(79,243,255,.22)');
+      }
+      game.shake.mag = Math.min(9, game.shake.mag + 1.35);
+    }
+
+    function shieldHit(sh, a){
+      // brief invulnerability to avoid multi-hits in one overlap
+      if (sh.hitLock > 0) return;
+      sh.hitLock = 0.08;
 
       const pt = game.planet.type || PLANET_TYPES[0];
       const aura = game.planet.upgrades.satAura;
       const dmgMul = pt.satDmgMul * (1 + aura);
-      const cdMul = clamp(pt.satCdMul * (1 - aura*0.65), 0.72, 1.25);
-      let best = null;
-      let bestD2 = Infinity;
-      const range2 = s.range*s.range;
-      for (let i=0;i<asteroids.length;i++){
-        const a = asteroids[i];
-        if (!a.alive) continue;
-        const dx = a.x - s.x, dy = a.y - s.y;
-        const d2 = dx*dx + dy*dy;
-        if (d2 <= range2 && d2 < bestD2){ bestD2 = d2; best = a; }
-      }
-      if (!best) return;
-      const dmg = s.dmg * dmgMul * (1 + (game.wave-1)*0.01 + (game.level-1)*0.006);
-      best.hp -= dmg;
-      const col = glowForLevel(s.level);
-      addBullet(s.x, s.y, best.x, best.y, col);
-      sfxShot();
-      const dx = best.x - s.x, dy = best.y - s.y;
+      const dmg = sh.hitDmg * dmgMul;
+      a.hp -= dmg;
+
+      // shield takes some wear based on asteroid toughness
+      const wear = (3.5 + a.tier*1.4 + (a.kind==='tank' ? 3.5 : 0)) * (a.impactMul || 1);
+      sh.hp -= wear;
+
+      // knockback impulse away from shield
+      const dx = a.x - sh.x, dy = a.y - sh.y;
       const d = Math.max(1, hypot(dx,dy));
       const nx = dx/d, ny = dy/d;
-      for (let k=0;k<5;k++) addParticle(best.x - nx*best.r*0.4, best.y - ny*best.r*0.4, rand(-80,80)+nx*rand(30,90), rand(-80,80)+ny*rand(30,90), rand(0.18,0.30), rand(1.3,2.3), 'rgba(255,255,255,.70)', col);
+      const k = sh.knock;
+      a.vx += nx * k;
+      a.vy += ny * k;
 
-      if (best.hp <= 0 && best.alive){
-        best.alive = false;
-        game.waveAlive = Math.max(0, game.waveAlive - 1);
-
-        // Splitter spawns shards on death.
-        if (best.split > 0){
-          for (let n=0;n<best.split;n++){
-            const ang = rand(0, Math.PI*2);
-            const sp = rand(40, 90);
-            const vx2 = Math.cos(ang)*sp + best.vx*0.25;
-            const vy2 = Math.sin(ang)*sp + best.vy*0.25;
-            asteroids.push(makeAsteroid('shard', Math.max(0, best.tier-1), best.x + Math.cos(ang)*best.r*0.25, best.y + Math.sin(ang)*best.r*0.25, vx2, vy2, game.wave, game.level));
-            game.waveAlive++;
-          }
-        }
-
-        const pts = Math.floor((28 + best.tier*18 + game.wave*2.2 + (game.level-1)*2.0) * best.scoreMul);
-        game.score += pts;
-        addFloater(`+${pts}`, best.x, best.y, 'rgba(82,255,159,.95)');
-        sfxPop();
-        for (let k=0;k<14;k++){
-          const ang = rand(0, Math.PI*2);
-          const sp = rand(60, 210);
-          addParticle(best.x, best.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.25,0.55), rand(1.4,3.0), 'rgba(79,243,255,.55)', glowForLevel(Math.max(1, s.level-1)));
-        }
-        game.shake.mag = Math.min(9, game.shake.mag + 1.35);
+      // sparks
+      const col = glowForLevel(sh.level);
+      for (let i=0;i<7;i++){
+        addParticle(a.x - nx*a.r*0.2, a.y - ny*a.r*0.2, rand(-90,90)+nx*rand(40,140), rand(-90,90)+ny*rand(40,140), rand(0.16,0.30), rand(1.2,2.3), 'rgba(255,255,255,.65)', col);
       }
-      s.cdTimer = s.cd * cdMul;
+      game.shake.mag = Math.min(12, game.shake.mag + 0.8);
+
+      if (a.hp <= 0) killAsteroid(a, sh.level);
+      if (sh.hp <= 0){
+        sh.alive = false;
+        addFloater('ESCUDO ROTO', sh.x, sh.y, 'rgba(255,59,92,.95)');
+        sfxHit();
+      }
     }
 
     function damagePlanet(amount, atX, atY){
@@ -1198,6 +1201,7 @@
         const s = satellites[i];
         if (!s.alive) continue;
         s.mergeLock = Math.max(0, s.mergeLock - dt);
+        s.hitLock = Math.max(0, s.hitLock - dt);
         applyCentralGravity(s, dt);
         damp(s, dt, 0.18);
 
@@ -1217,8 +1221,27 @@
         }
 
         integrate(s, dt);
-        satShoot(s, dt);
         s.spin += dt * (0.8 + s.level*0.09);
+      }
+
+      // Shield contact defense
+      for (let i=0;i<satellites.length;i++){
+        const sh = satellites[i];
+        if (!sh.alive) continue;
+        for (let j=0;j<asteroids.length;j++){
+          const a = asteroids[j];
+          if (!a.alive) continue;
+          const dx = a.x - sh.x, dy = a.y - sh.y;
+          const rr = a.r + sh.r;
+          if (dx*dx + dy*dy <= rr*rr){
+            const d = Math.max(0.001, hypot(dx,dy));
+            const nx = dx/d, ny = dy/d;
+            const overlap = rr - d;
+            a.x += nx * overlap * 0.6;
+            a.y += ny * overlap * 0.6;
+            shieldHit(sh, a);
+          }
+        }
       }
 
       for (let i=0;i<asteroids.length;i++){
@@ -1270,11 +1293,6 @@
       tryFusions();
       compactArrays();
 
-      for (let i=bullets.length-1;i>=0;i--){
-        bullets[i].life -= dt;
-        if (bullets[i].life <= 0) bullets.splice(i,1);
-      }
-
       for (let i=particles.length-1;i>=0;i--){
         const p = particles[i];
         p.life -= dt;
@@ -1303,6 +1321,8 @@
       scoreEl.textContent = String(Math.floor(game.score));
       bestEl.textContent = String(game.bestLevel);
       comboEl.textContent = `x${game.combo}`;
+      // Make upgrades visible as a compact suffix on level timer.
+      lvlInEl.title = `Tipo: ${pt.name} | +HP:${game.planet.upgrades.hpBonus} | Regen:+${game.planet.upgrades.regenBonus.toFixed(2)}/s | Aura:+${Math.round(game.planet.upgrades.satAura*100)}%`;
       const hpPct = (game.planet.hp / game.planet.hpMax);
       hpFillEl.style.transform = `scaleX(${clamp(hpPct, 0, 1)})`;
       hpTxtEl.textContent = `${Math.floor(hpPct*100)}%`;
@@ -1334,23 +1354,6 @@
         }
       }
       ctx.globalAlpha = 1;
-
-      // bullets
-      for (let i=0;i<bullets.length;i++){
-        const b = bullets[i];
-        const a = b.life / b.max;
-        ctx.globalAlpha = a;
-        ctx.strokeStyle = b.col;
-        ctx.lineWidth = 2.4;
-        ctx.shadowColor = b.col;
-        ctx.shadowBlur = 12;
-        ctx.beginPath();
-        ctx.moveTo(b.x1, b.y1);
-        ctx.lineTo(b.x2, b.y2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-      }
 
       // planet
       const px = game.planet.x, py = game.planet.y, pr = game.planet.r;
@@ -1447,57 +1450,59 @@
         if (!s.alive) continue;
         const col = colorForLevel(s.level);
         const glow = glowForLevel(s.level);
+        const hp = clamp(s.hp / s.hpMax, 0, 1);
 
+        // Shield ring (visible defense)
         ctx.save();
-        ctx.globalAlpha = 0.06;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.10 + (1-hp)*0.05;
         ctx.strokeStyle = col;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.range, 0, Math.PI*2);
+        ctx.arc(s.x, s.y, s.r + 6 + s.level*0.8, 0, Math.PI*2);
         ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
         ctx.restore();
 
+        // Drone ship body (triangle) + glow core
         ctx.save();
         ctx.translate(s.x, s.y);
         ctx.rotate(s.spin);
+
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.16;
+        ctx.globalAlpha = 0.14;
         ctx.fillStyle = glow;
-        ctx.beginPath(); ctx.arc(0,0, s.r*2.2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0,0, s.r*2.0, 0, Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'source-over';
 
-        const g = ctx.createRadialGradient(-s.r*0.35, -s.r*0.35, s.r*0.2, 0,0, s.r*1.2);
-        g.addColorStop(0,'rgba(255,255,255,.85)');
-        g.addColorStop(0.45, col);
-        g.addColorStop(1,'rgba(255,255,255,.06)');
-        ctx.fillStyle = g;
-        ctx.strokeStyle = 'rgba(255,255,255,.28)';
-        ctx.lineWidth = 1.5;
         ctx.shadowColor = glow;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = 'rgba(10,14,24,.85)';
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(0,0,s.r,0,Math.PI*2);
+        ctx.moveTo(s.r*1.05, 0);
+        ctx.lineTo(-s.r*0.85, -s.r*0.75);
+        ctx.lineTo(-s.r*0.60, 0);
+        ctx.lineTo(-s.r*0.85, s.r*0.75);
+        ctx.closePath();
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.stroke();
 
-        ctx.globalAlpha = 0.9;
-        ctx.strokeStyle = 'rgba(79,243,255,.45)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(s.r*0.2, -s.r*0.85);
-        ctx.lineTo(s.r*0.6, -s.r*1.25);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
+        // Shield HP arc
+        if (hp < 0.999){
+          ctx.globalAlpha = 0.9;
+          ctx.strokeStyle = 'rgba(79,243,255,.55)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0,0, s.r+7 + s.level*0.8, -Math.PI/2, -Math.PI/2 + hp*Math.PI*2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
 
-        ctx.globalAlpha = 0.35;
-        ctx.strokeStyle = col;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(0,0,s.r+3,0,Math.PI*2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
         ctx.restore();
       }
 
@@ -1605,7 +1610,6 @@
     function resetState(){
       satellites.length = 0;
       asteroids.length = 0;
-      bullets.length = 0;
       particles.length = 0;
       floaters.length = 0;
 
@@ -1667,7 +1671,7 @@
       overlayEl.classList.add('show');
       overlayEl.querySelector('.title').textContent = 'Fin de partida';
       overlayCopyEl.innerHTML =
-        `Puntuación: <b>${final}</b><br/>Mejor Nivel: <b>${best}</b><br/>Oleada alcanzada: <b>${game.wave}</b><br/><span style="color:rgba(215,227,255,.78)">Pulsa R o toca \"Jugar\" para reiniciar.</span>`;
+        `Puntuación: <b>${final}</b><br/>Mejor Escudo: <b>${best}</b><br/>Nivel alcanzado: <b>${game.level}</b><br/>Oleada alcanzada: <b>${game.wave}</b><br/><span style="color:rgba(215,227,255,.78)">Pulsa R o toca \"Jugar\" para reiniciar.</span>`;
       startBtn.textContent = 'Jugar otra vez';
     }
 
