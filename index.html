@@ -339,16 +339,17 @@
 
   <div class="hint" id="hint" aria-hidden="true">
     <span class="pill">Orbit Synthesis</span>
-    Arrastra y suelta para lanzar ESCUDOS. Fusiona iguales. Protege la Nave Madre.
+    Arrastra y suelta para lanzar NAVES. Disparan solas. ¡Cuidado con los JEFES!
   </div>
 
   <div class="overlay show" id="overlay" role="dialog" aria-modal="true">
     <div class="card">
       <h2 class="title">Orbit Synthesis</h2>
       <p class="sub" id="overlayCopy">
-        Lanza módulos de <b>escudo</b> desde el borde: entran en órbita y bloquean asteroides por contacto.
-        Si dos del mismo nivel chocan, <b>se fusionan</b> (Nivel +1) y el escudo se vuelve más grande y resistente.
-        Cada 30s sube el <b>Nivel</b> (más dificultad) y rota el tipo de Nave Madre. Si su vida llega a 0, la partida termina.
+        Lanza <b>naves de defensa</b> desde el borde: entran en órbita y <b>disparan automáticamente</b> a los asteroides.
+        Cada nave gana experiencia al destruir enemigos y <b>sube de nivel</b> (más daño y alcance).
+        Cada 30s sube el <b>Nivel</b> (más dificultad) y cada 5 oleadas aparece un <b>JEFE</b> que dispara.
+        Los asteroides sueltan <b>power-ups</b>. Si la vida de la Nave Madre llega a 0, la partida termina.
       </p>
       <div class="grid2">
         <div class="stat">
@@ -360,16 +361,16 @@
           <div class="v" style="font-size:13px;font-weight:700;">Protege la nave</div>
         </div>
         <div class="stat">
-          <div class="k">Fusión</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Iguales → +1</div>
+          <div class="k">Disparo</div>
+          <div class="v" style="font-size:13px;font-weight:700;">Automático</div>
         </div>
         <div class="stat">
           <div class="k">Puntuación</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Cadenas = Combo</div>
+          <div class="v" style="font-size:13px;font-weight:700;">Kills = Combo</div>
         </div>
       </div>
       <p class="sub" style="margin-top:0">
-        Consejos: lanza con un arrastre largo para entrar con tangente y formar una órbita. Busca que dos iguales choquen cerca de la nave para encadenar fusiones.
+        Consejos: lanza con un arrastre largo para dar velocidad a la órbita. Recoge los power-ups que sueltan los asteroides. Prioriza a los JEFES antes de que destruyan tus naves.
         Teclas: <b>H</b> ayuda, <b>S</b> sonido, <b>R</b> reiniciar tras perder.
       </p>
       <div class="grid2">
@@ -379,7 +380,7 @@
         </div>
         <div class="stat">
           <div class="k">Consejo</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Fusiona en cadena</div>
+          <div class="v" style="font-size:13px;font-weight:700;">¡Atento a los JEFES!</div>
         </div>
       </div>
       <div class="btnRow">
@@ -509,6 +510,23 @@
     function sfxShot(){ beep('square', rand(520, 780), 0.035, 0.04); }
     function sfxPop(){ beep('sawtooth', rand(180, 280), 0.06, 0.06); }
     function sfxHit(){ beep('triangle', rand(90, 140), 0.08, 0.08); }
+    function sfxLaser(lvl){
+      const f = 600 + lvl*40;
+      beep('square', f, 0.04, 0.035);
+      beep('sine', f*1.3, 0.025, 0.025);
+    }
+    function sfxExplosion(){
+      beep('sawtooth', rand(40, 90), 0.18, 0.10);
+      beep('sine', rand(30, 60), 0.14, 0.08);
+    }
+    function sfxPowerup(){
+      beep('sine', rand(500, 700), 0.08, 0.08);
+      beep('sine', rand(700, 1000), 0.06, 0.06);
+    }
+    function sfxBossAlert(){
+      beep('square', 140, 0.12, 0.07);
+      beep('square', 100, 0.15, 0.07);
+    }
 
     muteBtn.addEventListener('click', () => {
       muted = !muted;
@@ -584,13 +602,28 @@
         down:false, id:null,
         x:0, y:0, sx:0, sy:0,
         valid:false
-      }
+      },
+
+      bossActive: false,
+      bossSpawnWave: 5,
+
+      buffs: {
+        multiShot: 0,
+        speedBoost: 0,
+        damageBoost: 0,
+        shield: 0
+      },
+
+      powerupMsgTimer: 0
     };
 
     const satellites = [];
     const asteroids = [];
     const particles = [];
     const floaters = [];
+    const projectiles = [];
+    const bosses = [];
+    const powerups = [];
 
     // ---------- Planet Types + Score Upgrades ----------
     const PLANET_TYPES = [
@@ -716,7 +749,6 @@
 
     // ---------- Entities ----------
     function makeSatellite(level, x, y, vx, vy){
-      // Now a shield-drone module (contact defense).
       const baseR = 9.5;
       const r = baseR + (level-1) * 3.1;
       const mass = Math.pow(r, 2) * 0.035;
@@ -735,13 +767,19 @@
         mergeLock: 0,
         hitLock: 0,
         spin: rand(0, Math.PI*2),
-        alive: true
+        alive: true,
+        fireCooldown: 0,
+        fireRate: Math.max(0.22, 0.65 - level*0.045),
+        range: 260 + level*15,
+        xp: 0,
+        xpToNext: 4 + level*3,
+        kills: 0
       };
     }
 
     function makeAsteroid(kind, tier, x, y, vx, vy, wave, level){
       const baseR = 10 + tier*2.2 + Math.min(6, wave*0.25);
-      const baseHp = 16 + tier*10 + wave*2.3 + level*1.4;
+      const baseHp = 22 + tier*14 + wave*3.8 + level*3.5;
       const baseSpeedBias = 1 + wave*0.03 + tier*0.06 + level*0.045;
 
       let r = baseR;
@@ -800,6 +838,59 @@
       };
     }
 
+    // ---------- Projectile Factory ----------
+    function makeProjectile(x, y, vx, vy, damage, isEnemy, lvl){
+      return { x, y, vx, vy, r: isEnemy ? 5 : 3.5, damage, isEnemy, lvl: lvl||1, life: 2.5, alive: true };
+    }
+
+    // ---------- Boss Factory ----------
+    function makeBoss(wave, level){
+      const r = 28 + Math.min(wave, 15)*1.5;
+      const hp = 180 + wave*35 + level*20;
+      const mass = Math.pow(r, 2) * 0.06;
+      const edge = randi(0, 3);
+      let x, y;
+      const pad = 40;
+      if (edge === 0){ x = rand(pad, W-pad); y = -pad; }
+      else if (edge === 1){ x = W+pad; y = rand(pad, H-pad); }
+      else if (edge === 2){ x = rand(pad, W-pad); y = H+pad; }
+      else { x = -pad; y = rand(pad, H-pad); }
+      const dx = game.planet.x - x, dy = game.planet.y - y;
+      const d = Math.max(1, hypot(dx,dy));
+      const speed = rand(18, 28) * (1 + wave*0.015);
+      return {
+        x, y,
+        vx: (dx/d)*speed, vy: (dy/d)*speed,
+        r, hp, hpMax: hp, mass,
+        wave, level,
+        fireCooldown: 0,
+        fireRate: Math.max(1.2, 2.2 - wave*0.04),
+        spin: 0,
+        alive: true
+      };
+    }
+
+    // ---------- Power-up Factory ----------
+    const POWERUP_TYPES = ['shield','multishot','speed','repair','damage'];
+    const POWERUP_COLORS = {
+      shield: 'rgba(79,243,255,.95)',
+      multishot: 'rgba(255,207,90,.95)',
+      speed: 'rgba(82,255,159,.95)',
+      repair: 'rgba(255,79,240,.95)',
+      damage: 'rgba(255,59,92,.95)'
+    };
+    const POWERUP_LABELS = {
+      shield: 'ESCUDO',
+      multishot: 'MULTI-TIRO',
+      speed: 'VELOCIDAD',
+      repair: 'REPARACIÓN',
+      damage: 'DAÑO'
+    };
+    function makePowerup(x, y, type){
+      const t = type || POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)];
+      return { x, y, vx: rand(-15,15), vy: rand(-40,-20), r: 9, type: t, life: 6, alive: true };
+    }
+
     const CAPS = { particles: 700, floaters: 80 };
     function addParticle(x,y,vx,vy,life,sz,col,glow){
       if (particles.length >= CAPS.particles) return;
@@ -846,6 +937,15 @@
       game.waveClearGrace = 0;
       waveEl.textContent = String(game.wave);
       addFloater(`OLEADA ${game.wave}`, game.planet.x, game.planet.y - game.planet.r - 42, 'rgba(79,243,255,.95)');
+
+      // Boss every N waves
+      if (w % game.bossSpawnWave === 0 && !game.bossActive){
+        game.bossActive = true;
+        const boss = makeBoss(w, game.level);
+        bosses.push(boss);
+        sfxBossAlert();
+        addFloater('¡JEFE!', game.planet.x, game.planet.y - game.planet.r - 70, 'rgba(255,59,92,.95)');
+      }
     }
 
     function spawnAsteroid(){
@@ -1000,8 +1100,46 @@
       b.x += nx*push; b.y += ny*push;
     }
 
-    // ---------- Combat (Shield Contact) ----------
-    function killAsteroid(a, byShieldLevel){
+    // ---------- Combat (Projectile-based) ----------
+    function distToSatellite(x, y){
+      let best = Infinity, bestSat = null;
+      for (let i=0;i<satellites.length;i++){
+        const s = satellites[i];
+        if (!s.alive) continue;
+        const d = hypot(s.x-x, s.y-y);
+        if (d < best){ best = d; bestSat = s; }
+      }
+      return { dist: best, sat: bestSat };
+    }
+
+    function giveXPToNearest(x, y, amount){
+      const { sat } = distToSatellite(x, y);
+      if (!sat) return;
+      sat.xp += amount;
+      if (sat.xp >= sat.xpToNext){
+        sat.xp -= sat.xpToNext;
+        sat.level++;
+        sat.xpToNext = 4 + sat.level*3;
+        sat.fireRate = Math.max(0.22, 0.65 - sat.level*0.045);
+        sat.range = 260 + sat.level*15;
+        const nr = 9.5 + (sat.level-1)*3.1;
+        const oldR = sat.r;
+        sat.r = nr;
+        sat.hpMax = 18 + (sat.level-1)*10;
+        sat.hp = Math.min(sat.hpMax, sat.hp + (sat.hpMax - (18 + (sat.level-2)*10))*0.5);
+        game.bestLevel = Math.max(game.bestLevel, sat.level);
+        addFloater(`NIVEL ${sat.level}!`, sat.x, sat.y - 12, glowForLevel(sat.level));
+        sfxFusion(sat.level);
+        game.shake.mag = Math.min(12, game.shake.mag + 1.5);
+        for (let k=0;k<18;k++){
+          const ang = rand(0, Math.PI*2);
+          const sp = rand(60, 200);
+          addParticle(sat.x, sat.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.25,0.6), rand(1.4,3.0), colorForLevel(sat.level), glowForLevel(sat.level));
+        }
+      }
+    }
+
+    function killAsteroid(a){
       if (!a.alive) return;
       a.alive = false;
       game.waveAlive = Math.max(0, game.waveAlive - 1);
@@ -1017,53 +1155,59 @@
         }
       }
 
-      const pts = Math.floor((28 + a.tier*18 + game.wave*2.2 + (game.level-1)*2.0) * a.scoreMul * (1 + Math.max(0, byShieldLevel-1)*0.04));
+      const dmgMul = game.buffs.damageBoost > 0 ? 2 : 1;
+      const pts = Math.floor((28 + a.tier*18 + game.wave*2.2 + (game.level-1)*2.0) * a.scoreMul * dmgMul);
       game.score += pts;
       addFloater(`+${pts}`, a.x, a.y, 'rgba(82,255,159,.95)');
-      sfxPop();
-      for (let k=0;k<14;k++){
-        const ang = rand(0, Math.PI*2);
-        const sp = rand(60, 210);
-        addParticle(a.x, a.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.22,0.5), rand(1.4,2.8), 'rgba(79,243,255,.55)', 'rgba(79,243,255,.22)');
+
+      giveXPToNearest(a.x, a.y, 1 + Math.floor(a.tier*0.5));
+
+      // Combo based on kill streak
+      const nowCombo = (game.comboTimer > 0) ? Math.min(25, game.combo + 1) : 1;
+      game.combo = nowCombo;
+      game.comboPeak = Math.max(game.comboPeak, game.combo);
+      game.comboTimer = 1.0;
+
+      // Powerup drop
+      if (Math.random() < 0.10){
+        const type = POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)];
+        powerups.push(makePowerup(a.x, a.y, type));
+      }
+
+      if (a.kind !== 'shard'){
+        sfxExplosion();
+        for (let k=0;k<20;k++){
+          const ang = rand(0, Math.PI*2);
+          const sp = rand(60, 240);
+          addParticle(a.x, a.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.22,0.55), rand(1.4,3.0), 'rgba(79,243,255,.55)', 'rgba(79,243,255,.22)');
+          addParticle(a.x, a.y, rand(-a.r*0.8,a.r*0.8), rand(-a.r*0.8,a.r*0.8), rand(0.15,0.35), rand(0.8,1.8), 'rgba(255,255,255,.6)', 'rgba(255,255,255,.2)');
+        }
       }
       game.shake.mag = Math.min(9, game.shake.mag + 1.35);
     }
 
-    function shieldHit(sh, a){
-      // brief invulnerability to avoid multi-hits in one overlap
-      if (sh.hitLock > 0) return;
-      sh.hitLock = 0.08;
+    function killBoss(b){
+      if (!b.alive) return;
+      b.alive = false;
+      game.bossActive = false;
 
-      const pt = game.planet.type || PLANET_TYPES[0];
-      const aura = game.planet.upgrades.satAura;
-      const dmgMul = pt.satDmgMul * (1 + aura);
-      const dmg = sh.hitDmg * dmgMul;
-      a.hp -= dmg;
+      // Always drop 2 powerups
+      powerups.push(makePowerup(b.x - 15, b.y, POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)]));
+      powerups.push(makePowerup(b.x + 15, b.y, POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)]));
 
-      // shield takes some wear based on asteroid toughness
-      const wear = (3.5 + a.tier*1.4 + (a.kind==='tank' ? 3.5 : 0)) * (a.impactMul || 1);
-      sh.hp -= wear;
+      const pts = Math.floor(120 + b.wave*25 + b.level*15);
+      game.score += pts;
+      addFloater(`¡JEFE! +${pts}`, b.x, b.y - 10, 'rgba(255,207,90,.95)');
+      addFloater('¡BOTÍN!', b.x, b.y + 16, 'rgba(82,255,159,.95)');
 
-      // knockback impulse away from shield
-      const dx = a.x - sh.x, dy = a.y - sh.y;
-      const d = Math.max(1, hypot(dx,dy));
-      const nx = dx/d, ny = dy/d;
-      const k = sh.knock;
-      a.vx += nx * k;
-      a.vy += ny * k;
-
-      // sparks
-      const col = glowForLevel(sh.level);
-      for (let i=0;i<7;i++){
-        addParticle(a.x - nx*a.r*0.2, a.y - ny*a.r*0.2, rand(-90,90)+nx*rand(40,140), rand(-90,90)+ny*rand(40,140), rand(0.16,0.30), rand(1.2,2.3), 'rgba(255,255,255,.65)', col);
-      }
-      game.shake.mag = Math.min(12, game.shake.mag + 0.8);
-
-      if (a.hp <= 0) killAsteroid(a, sh.level);
-      if (sh.hp <= 0){
-        sh.alive = false;
-        addFloater('ESCUDO ROTO', sh.x, sh.y, 'rgba(255,59,92,.95)');
-        sfxHit();
+      sfxExplosion();
+      sfxExplosion();
+      game.shake.mag = Math.min(22, game.shake.mag + 8);
+      for (let k=0;k<50;k++){
+        const ang = rand(0, Math.PI*2);
+        const sp = rand(80, 350);
+        addParticle(b.x, b.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.3,0.8), rand(2.0,5.0), 'rgba(255,207,90,.7)', 'rgba(255,59,92,.4)');
+        addParticle(b.x, b.y, rand(-b.r,b.r), rand(-b.r,b.r), rand(0.15,0.4), rand(1.0,2.5), 'rgba(255,255,255,.7)', 'rgba(255,207,90,.3)');
       }
     }
 
@@ -1086,65 +1230,43 @@
       if (game.planet.hp <= 0 && !game.over) endGame();
     }
 
-    // ---------- Fusion ----------
-    function tryFusions(){
-      for (let i=0;i<satellites.length;i++){
-        const a = satellites[i];
-        if (!a.alive || a.mergeLock > 0) continue;
-        for (let j=i+1;j<satellites.length;j++){
-          const b = satellites[j];
-          if (!b.alive || b.mergeLock > 0) continue;
-          if (a.level !== b.level) continue;
-          if (!circleCollide(a,b)) continue;
-
-          a.alive = false;
-          b.alive = false;
-          const lvl = a.level + 1;
-          game.bestLevel = Math.max(game.bestLevel, lvl);
-
-          const m1 = a.mass, m2 = b.mass;
-          const mx = (a.x*m1 + b.x*m2) / (m1 + m2);
-          const my = (a.y*m1 + b.y*m2) / (m1 + m2);
-          const vx = (a.vx*m1 + b.vx*m2) / (m1 + m2);
-          const vy = (a.vy*m1 + b.vy*m2) / (m1 + m2);
-
-          const dx = mx - game.planet.x, dy = my - game.planet.y;
-          const d = Math.max(1, hypot(dx,dy));
-          const nx = dx/d, ny = dy/d;
-
-          const fused = makeSatellite(lvl, mx + nx*2.5, my + ny*2.5, vx + nx*rand(10,35), vy + ny*rand(10,35));
-          fused.mergeLock = 0.14;
-          satellites.push(fused);
-
-          const nowCombo = (game.comboTimer > 0) ? Math.min(20, game.combo + 1) : 1;
-          game.combo = nowCombo;
-          game.comboPeak = Math.max(game.comboPeak, game.combo);
-          game.comboTimer = 1.25;
-
-          const basePts = 70 + (lvl-1)*35;
-          const pts = Math.floor(basePts * (1 + (game.combo-1)*0.22));
-          game.score += pts;
-
-          addFloater(`FUSIÓN! +${pts}`, mx, my - 6, 'rgba(79,243,255,.95)');
-          sfxFusion(lvl);
-          const col = colorForLevel(lvl);
-          const glow = glowForLevel(lvl);
-          for (let k=0;k<26;k++){
-            const ang = rand(0, Math.PI*2);
-            const sp = rand(80, 330);
-            addParticle(mx, my, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.25,0.7), rand(1.4,3.4), col, glow);
-          }
-          for (let k=0;k<12;k++) addParticle(mx, my, rand(-110,110), rand(-110,110), rand(0.18,0.38), rand(1.1,2.1), 'rgba(255,255,255,.65)', glow);
-
-          game.shake.mag = Math.min(18, game.shake.mag + 3.2);
-          break;
-        }
-      }
-    }
-
     function compactArrays(){
       for (let i=satellites.length-1;i>=0;i--) if (!satellites[i].alive) satellites.splice(i,1);
       for (let i=asteroids.length-1;i>=0;i--) if (!asteroids[i].alive) asteroids.splice(i,1);
+      for (let i=projectiles.length-1;i>=0;i--) if (!projectiles[i].alive) projectiles.splice(i,1);
+      for (let i=bosses.length-1;i>=0;i--) if (!bosses[i].alive) bosses.splice(i,1);
+      for (let i=powerups.length-1;i>=0;i--) if (!powerups[i].alive) powerups.splice(i,1);
+    }
+
+    function applyPowerup(type){
+      sfxPowerup();
+      switch(type){
+        case 'shield':
+          game.buffs.shield = 3;
+          addFloater('¡ESCUDO! 3 impactos', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.shield);
+          break;
+        case 'multishot':
+          game.buffs.multiShot = 10;
+          addFloater('¡MULTI-TIRO! 10s', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.multishot);
+          break;
+        case 'speed':
+          game.buffs.speedBoost = 10;
+          addFloater('¡VELOCIDAD! 10s', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.speed);
+          break;
+        case 'repair':
+          game.planet.hp = Math.min(game.planet.hpMax, game.planet.hp + 25);
+          addFloater('+25 HP', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.repair);
+          break;
+        case 'damage':
+          game.buffs.damageBoost = 10;
+          addFloater('¡DAÑO DOBLE! 10s', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.damage);
+          break;
+      }
+      for (let k=0;k<16;k++){
+        const ang = rand(0, Math.PI*2);
+        const sp = rand(40, 160);
+        addParticle(game.planet.x, game.planet.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.2,0.45), rand(1.5,3.0), 'rgba(255,255,255,.65)', 'rgba(79,243,255,.3)');
+      }
     }
 
     // ---------- Update / Render ----------
@@ -1203,7 +1325,8 @@
         s.mergeLock = Math.max(0, s.mergeLock - dt);
         s.hitLock = Math.max(0, s.hitLock - dt);
         applyCentralGravity(s, dt);
-        damp(s, dt, 0.18);
+        const dampK = game.buffs.speedBoost > 0 ? 0.06 : 0.18;
+        damp(s, dt, dampK);
 
         const dx = s.x - game.planet.x, dy = s.y - game.planet.y;
         const d = hypot(dx,dy);
@@ -1224,26 +1347,124 @@
         s.spin += dt * (0.8 + s.level*0.09);
       }
 
-      // Shield contact defense
+      // ---------- Satellite Auto-Shooting ----------
       for (let i=0;i<satellites.length;i++){
-        const sh = satellites[i];
-        if (!sh.alive) continue;
+        const s = satellites[i];
+        if (!s.alive) continue;
+        s.fireCooldown -= dt;
+        let target = null, targetDist = Infinity;
         for (let j=0;j<asteroids.length;j++){
           const a = asteroids[j];
           if (!a.alive) continue;
-          const dx = a.x - sh.x, dy = a.y - sh.y;
-          const rr = a.r + sh.r;
-          if (dx*dx + dy*dy <= rr*rr){
-            const d = Math.max(0.001, hypot(dx,dy));
-            const nx = dx/d, ny = dy/d;
-            const overlap = rr - d;
-            a.x += nx * overlap * 0.6;
-            a.y += ny * overlap * 0.6;
-            shieldHit(sh, a);
+          const d = hypot(a.x - s.x, a.y - s.y);
+          if (d < targetDist && d < s.range){ targetDist = d; target = a; }
+        }
+        if (!target && bosses.length > 0){
+          for (let j=0;j<bosses.length;j++){
+            const b = bosses[j];
+            if (!b.alive) continue;
+            const d = hypot(b.x - s.x, b.y - s.y);
+            if (d < targetDist && d < s.range + 40){ targetDist = d; target = b; }
+          }
+        }
+        if (target && s.fireCooldown <= 0){
+          s.fireCooldown = s.fireRate;
+          const dx = target.x - s.x, dy = target.y - s.y;
+          const d = Math.max(1, hypot(dx,dy));
+          const speed = 480 + s.level*15;
+          const shots = game.buffs.multiShot > 0 ? 3 : 1;
+          for (let k=0;k<shots;k++){
+            const spread = (k-1) * 0.12;
+            const ang = Math.atan2(dy, dx) + spread + rand(-0.04, 0.04);
+            const pvx = Math.cos(ang)*speed + s.vx*0.3;
+            const pvy = Math.sin(ang)*speed + s.vy*0.3;
+            const dmg = (s.hitDmg * 0.6) * (game.buffs.damageBoost > 0 ? 2 : 1);
+            projectiles.push(makeProjectile(s.x, s.y, pvx, pvy, dmg, false, s.level));
+          }
+          sfxLaser(s.level);
+        }
+      }
+
+      // ---------- Projectile Update + Collision ----------
+      for (let i=0;i<projectiles.length;i++){
+        const p = projectiles[i];
+        if (!p.alive) continue;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt;
+        if (p.life <= 0 || p.x < -50 || p.x > W+50 || p.y < -50 || p.y > H+50){ p.alive = false; continue; }
+
+        if (!p.isEnemy){
+          // Friendly projectile → hit asteroids
+          for (let j=0;j<asteroids.length;j++){
+            const a = asteroids[j];
+            if (!a.alive) continue;
+            if (hypot(a.x-p.x, a.y-p.y) < a.r + p.r){
+              a.hp -= p.damage;
+              p.alive = false;
+              for (let k=0;k<5;k++){
+                addParticle(p.x, p.y, rand(-80,80), rand(-80,80), rand(0.1,0.25), rand(1,2), 'rgba(79,243,255,.5)', 'rgba(79,243,255,.2)');
+              }
+              if (a.hp <= 0) killAsteroid(a);
+              break;
+            }
+          }
+          // Friendly projectile → hit boss
+          if (p.alive){
+            for (let j=0;j<bosses.length;j++){
+              const b = bosses[j];
+              if (!b.alive) continue;
+              if (hypot(b.x-p.x, b.y-p.y) < b.r + p.r){
+                b.hp -= p.damage;
+                p.alive = false;
+                for (let k=0;k<8;k++){
+                  addParticle(p.x, p.y, rand(-100,100), rand(-100,100), rand(0.12,0.3), rand(1.2,2.5), 'rgba(255,207,90,.6)', 'rgba(255,207,90,.25)');
+                }
+                if (b.hp <= 0) killBoss(b);
+                break;
+              }
+            }
+          }
+        } else {
+          // Enemy projectile → hit planet
+          const dp = hypot(p.x - game.planet.x, p.y - game.planet.y);
+          if (dp < game.planet.r + p.r){
+            p.alive = false;
+            const shielded = game.buffs.shield > 0;
+            if (shielded){
+              game.buffs.shield = Math.max(0, game.buffs.shield - 1);
+              addFloater('BLOQUEADO!', p.x, p.y, 'rgba(79,243,255,.95)');
+              for (let k=0;k<10;k++){
+                addParticle(p.x, p.y, rand(-100,100), rand(-100,100), rand(0.15,0.3), rand(1,2.2), 'rgba(79,243,255,.6)', 'rgba(79,243,255,.25)');
+              }
+            } else {
+              damagePlanet(p.damage, p.x, p.y);
+            }
+          }
+          // Enemy projectile → hit satellites
+          if (p.alive){
+            for (let j=0;j<satellites.length;j++){
+              const s = satellites[j];
+              if (!s.alive) continue;
+              if (hypot(s.x-p.x, s.y-p.y) < s.r + p.r){
+                p.alive = false;
+                s.hp -= p.damage * 0.5;
+                for (let k=0;k<6;k++){
+                  addParticle(p.x, p.y, rand(-60,60), rand(-60,60), rand(0.12,0.28), rand(1,2), 'rgba(255,79,240,.5)', 'rgba(255,79,240,.2)');
+                }
+                if (s.hp <= 0){
+                  s.alive = false;
+                  addFloater('Nave destruida!', s.x, s.y, 'rgba(255,59,92,.95)');
+                  sfxHit();
+                }
+                break;
+              }
+            }
           }
         }
       }
 
+      // ---------- Asteroid Update ----------
       for (let i=0;i<asteroids.length;i++){
         const a = asteroids[i];
         if (!a.alive) continue;
@@ -1257,8 +1478,15 @@
         if (d < (game.planet.r + a.r)){
           a.alive = false;
           game.waveAlive = Math.max(0, game.waveAlive - 1);
-          const impact = (10 + a.tier*6 + game.wave*0.25 + (game.level-1)*0.8) * (a.impactMul || 1);
-          damagePlanet(impact, a.x, a.y);
+          const shielded = game.buffs.shield > 0;
+          if (shielded){
+            game.buffs.shield = Math.max(0, game.buffs.shield - 1);
+            addFloater('BLOQUEADO!', a.x, a.y, 'rgba(79,243,255,.95)');
+            for (let k=0;k<12;k++) addParticle(a.x, a.y, rand(-100,100), rand(-100,100), rand(0.15,0.3), rand(1,2.2), 'rgba(79,243,255,.6)', 'rgba(79,243,255,.25)');
+          } else {
+            const impact = (10 + a.tier*6 + game.wave*0.25 + (game.level-1)*0.8) * (a.impactMul || 1);
+            damagePlanet(impact, a.x, a.y);
+          }
         }
         if (a.x < -300 || a.x > W+300 || a.y < -300 || a.y > H+300){
           a.alive = false;
@@ -1266,6 +1494,58 @@
         }
       }
 
+      // ---------- Boss Update ----------
+      for (let i=0;i<bosses.length;i++){
+        const b = bosses[i];
+        if (!b.alive) continue;
+        applyCentralGravity(b, dt);
+        damp(b, dt, 0.03);
+        integrate(b, dt);
+        b.spin += dt * 0.6;
+
+        // Boss shoots at planet and nearest satellite
+        b.fireCooldown -= dt;
+        if (b.fireCooldown <= 0){
+          b.fireCooldown = b.fireRate;
+          // Shoot at planet
+          const dx = game.planet.x - b.x, dy = game.planet.y - b.y;
+          const d = Math.max(1, hypot(dx,dy));
+          const speed = rand(120, 200) + b.wave*2;
+          const ang = Math.atan2(dy, dx) + rand(-0.08, 0.08);
+          const pvx = Math.cos(ang)*speed;
+          const pvy = Math.sin(ang)*speed;
+          const dmg = 8 + b.wave*2 + b.level*1.5;
+          projectiles.push(makeProjectile(b.x, b.y, pvx, pvy, dmg, true, b.level));
+
+          // Shoot at nearest satellite
+          let targetSat = null, satDist = Infinity;
+          for (let j=0;j<satellites.length;j++){
+            const s = satellites[j];
+            if (!s.alive) continue;
+            const sd = hypot(s.x - b.x, s.y - b.y);
+            if (sd < satDist){ satDist = sd; targetSat = s; }
+          }
+          if (targetSat && satDist < 500){
+            const sdx = targetSat.x - b.x, sdy = targetSat.y - b.y;
+            const sd = Math.max(1, hypot(sdx,sdy));
+            const sang = Math.atan2(sdy, sdx) + rand(-0.1, 0.1);
+            const spvx = Math.cos(sang)*speed*0.85;
+            const spvy = Math.sin(sang)*speed*0.85;
+            const sdmg = 5 + b.wave*1.5 + b.level;
+            projectiles.push(makeProjectile(b.x, b.y, spvx, spvy, sdmg, true, b.level));
+          }
+        }
+
+        // Boss collision with planet
+        const dx = b.x - game.planet.x, dy = b.y - game.planet.y;
+        const d = hypot(dx,dy);
+        if (d < (game.planet.r + b.r)){
+          damagePlanet(20 + b.wave*3, b.x, b.y);
+          killBoss(b);
+        }
+      }
+
+      // ---------- Satellite-Satellite Collision ----------
       for (let i=0;i<satellites.length;i++){
         const a = satellites[i];
         if (!a.alive) continue;
@@ -1290,7 +1570,38 @@
         }
       }
 
-      tryFusions();
+      // ---------- Power-up Update ----------
+      for (let i=0;i<powerups.length;i++){
+        const pu = powerups[i];
+        if (!pu.alive) continue;
+        pu.vy += 40 * dt;
+        pu.x += pu.vx * dt;
+        pu.y += pu.vy * dt;
+        pu.life -= dt;
+        if (pu.life <= 0 || pu.y > H + 30){ pu.alive = false; continue; }
+
+        // Collect by satellite proximity
+        for (let j=0;j<satellites.length;j++){
+          const s = satellites[j];
+          if (!s.alive) continue;
+          if (hypot(s.x-pu.x, s.y-pu.y) < s.r + pu.r + 8){
+            applyPowerup(pu.type);
+            pu.alive = false;
+            break;
+          }
+        }
+        // Collect by planet proximity
+        if (pu.alive && hypot(game.planet.x-pu.x, game.planet.y-pu.y) < game.planet.r + pu.r + 8){
+          applyPowerup(pu.type);
+          pu.alive = false;
+        }
+      }
+
+      // ---------- Buff Timers ----------
+      if (game.buffs.multiShot > 0) game.buffs.multiShot -= dt;
+      if (game.buffs.speedBoost > 0) game.buffs.speedBoost -= dt;
+      if (game.buffs.damageBoost > 0) game.buffs.damageBoost -= dt;
+
       compactArrays();
 
       for (let i=particles.length-1;i>=0;i--){
@@ -1444,6 +1755,77 @@
         ctx.restore();
       }
 
+      // bosses
+      for (let i=0;i<bosses.length;i++){
+        const b = bosses[i];
+        if (!b.alive) continue;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.spin);
+        const br = b.r;
+        const hp = clamp(b.hp/b.hpMax, 0, 1);
+
+        // Glow
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.shadowColor = 'rgba(255,59,92,.5)';
+        ctx.shadowBlur = 30;
+        ctx.fillStyle = 'rgba(255,59,92,.08)';
+        ctx.beginPath(); ctx.arc(0,0,br*2.5,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalCompositeOperation = 'source-over';
+
+        // Body
+        const bGrd = ctx.createRadialGradient(-br*0.3,-br*0.3,br*0.2,0,0,br*1.2);
+        bGrd.addColorStop(0, 'rgba(255,255,255,.25)');
+        bGrd.addColorStop(0.5, 'rgba(160,40,60,.35)');
+        bGrd.addColorStop(1, 'rgba(30,10,15,1)');
+        ctx.fillStyle = bGrd;
+        ctx.strokeStyle = 'rgba(255,59,92,.45)';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = 'rgba(255,59,92,.25)';
+        ctx.shadowBlur = 14;
+
+        const bBumps = 8;
+        ctx.beginPath();
+        for (let k=0;k<=bBumps;k++){
+          const ang = (k/bBumps)*Math.PI*2;
+          const rr = br*(0.88+0.18*Math.sin(ang*4+b.wave));
+          const cx = Math.cos(ang)*rr;
+          const cy = Math.sin(ang)*rr;
+          if (k===0) ctx.moveTo(cx,cy); else ctx.lineTo(cx,cy);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.stroke();
+
+        // Skull-like cross
+        ctx.strokeStyle = 'rgba(255,255,255,.12)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-br*0.6,0); ctx.lineTo(br*0.6,0);
+        ctx.moveTo(0,-br*0.6); ctx.lineTo(0,br*0.6);
+        ctx.stroke();
+
+        // Eye dots
+        ctx.fillStyle = 'rgba(255,59,92,.8)';
+        ctx.shadowColor = 'rgba(255,59,92,.5)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(-br*0.25, -br*0.15, br*0.08, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(br*0.25, -br*0.15, br*0.08, 0, Math.PI*2); ctx.fill();
+
+        // HP ring
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = hp > 0.3 ? 'rgba(255,207,90,.6)' : 'rgba(255,59,92,.7)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0,0,br+6, -Math.PI/2, -Math.PI/2 + hp*Math.PI*2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
       // satellites
       for (let i=0;i<satellites.length;i++){
         const s = satellites[i];
@@ -1503,6 +1885,58 @@
           ctx.globalAlpha = 1;
         }
 
+        ctx.restore();
+      }
+
+      // projectiles
+      ctx.save();
+      ctx.shadowBlur = 0;
+      for (let i=0;i<projectiles.length;i++){
+        const p = projectiles[i];
+        if (!p.alive) continue;
+        if (p.isEnemy){
+          ctx.fillStyle = 'rgba(255,59,92,.9)';
+          ctx.shadowColor = 'rgba(255,59,92,.5)';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = 'rgba(79,243,255,.9)';
+          ctx.shadowColor = 'rgba(79,243,255,.5)';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+          ctx.fill();
+        }
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // powerups
+      for (let i=0;i<powerups.length;i++){
+        const pu = powerups[i];
+        if (!pu.alive) continue;
+        const t = game.t;
+        const bob = Math.sin(t*3 + pu.x*0.01)*3;
+        ctx.save();
+        ctx.translate(pu.x, pu.y + bob);
+        const col = POWERUP_COLORS[pu.type] || 'rgba(255,255,255,.9)';
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 16;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(0, 0, pu.r, 0, Math.PI*2); ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(10,14,24,.8)';
+        ctx.beginPath(); ctx.arc(0, 0, pu.r-2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = '700 10px ui-sans-serif, system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const label = POWERUP_LABELS[pu.type]?.slice(0,4) || '?';
+        ctx.fillText(label, 0, 1);
         ctx.restore();
       }
 
@@ -1590,7 +2024,77 @@
         ctx.restore();
       }
 
+      // Boss HP bar
+      for (let i=0;i<bosses.length;i++){
+        const b = bosses[i];
+        if (!b.alive) continue;
+        const hp = clamp(b.hp/b.hpMax, 0, 1);
+        const barW = 200;
+        const barH = 12;
+        const bx = W*0.5 - barW*0.5;
+        const by = 64;
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(0,0,0,.55)';
+        ctx.strokeStyle = 'rgba(255,59,92,.35)';
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, bx-1, by-1, barW+2, barH+2, 6);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(30,10,15,.8)';
+        roundRect(ctx, bx, by, barW, barH, 5);
+        ctx.fill();
+        ctx.fillStyle = hp > 0.3 ? 'rgba(255,207,90,.85)' : 'rgba(255,59,92,.85)';
+        if (hp > 0) roundRect(ctx, bx, by, barW*hp, barH, 5);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.7)';
+        ctx.font = '700 10px ui-sans-serif, system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`JEFE ${Math.ceil(hp*100)}%`, W*0.5, by + barH*0.5);
+        ctx.restore();
+        break;
+      }
+
+      // Buff indicators
+      const buffsActive = [];
+      if (game.buffs.shield > 0) buffsActive.push(`ESCUDO:${game.buffs.shield}`);
+      if (game.buffs.multiShot > 0) buffsActive.push(`MULTI:${Math.ceil(game.buffs.multiShot)}s`);
+      if (game.buffs.speedBoost > 0) buffsActive.push(`VEL:${Math.ceil(game.buffs.speedBoost)}s`);
+      if (game.buffs.damageBoost > 0) buffsActive.push(`DAÑO:${Math.ceil(game.buffs.damageBoost)}s`);
+      if (buffsActive.length > 0){
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(10,14,24,.65)';
+        ctx.font = '700 11px ui-sans-serif, system-ui';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        let by2 = 64;
+        if (bosses.some(b=>b.alive)) by2 = 84;
+        const text = buffsActive.join('  ');
+        const tw = ctx.measureText(text).width;
+        roundRect(ctx, W - tw - 20, by2 - 4, tw + 12, 22, 8);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(79,243,255,.9)';
+        ctx.fillText(text, W - 10, by2 + 1);
+        ctx.restore();
+      }
+
       ctx.restore();
+    }
+
+    function roundRect(ctx, x, y, w, h, r){
+      ctx.beginPath();
+      ctx.moveTo(x+r, y);
+      ctx.lineTo(x+w-r, y);
+      ctx.arcTo(x+w, y, x+w, y+r, r);
+      ctx.lineTo(x+w, y+h-r);
+      ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+      ctx.lineTo(x+r, y+h);
+      ctx.arcTo(x, y+h, x, y+h-r, r);
+      ctx.lineTo(x, y+r);
+      ctx.arcTo(x, y, x+r, y, r);
+      ctx.closePath();
     }
 
     function loop(ts){
@@ -1612,6 +2116,9 @@
       asteroids.length = 0;
       particles.length = 0;
       floaters.length = 0;
+      projectiles.length = 0;
+      bosses.length = 0;
+      powerups.length = 0;
 
       game.t = 0;
       game.score = 0;
@@ -1621,6 +2128,11 @@
       game.comboPeak = 1;
       game.over = false;
       game.shake.mag = 0;
+      game.bossActive = false;
+      game.buffs.multiShot = 0;
+      game.buffs.speedBoost = 0;
+      game.buffs.damageBoost = 0;
+      game.buffs.shield = 0;
 
       game.level = 1;
       game.levelTimer = 0;
@@ -1671,14 +2183,18 @@
       overlayEl.classList.add('show');
       overlayEl.querySelector('.title').textContent = 'Fin de partida';
       overlayCopyEl.innerHTML =
-        `Puntuación: <b>${final}</b><br/>Mejor Escudo: <b>${best}</b><br/>Nivel alcanzado: <b>${game.level}</b><br/>Oleada alcanzada: <b>${game.wave}</b><br/><span style="color:rgba(215,227,255,.78)">Pulsa R o toca \"Jugar\" para reiniciar.</span>`;
+        `Puntuación: <b>${final}</b><br/>Mejor Nave: <b>${best}</b><br/>Nivel alcanzado: <b>${game.level}</b><br/>Oleada alcanzada: <b>${game.wave}</b><br/><span style="color:rgba(215,227,255,.78)">Pulsa R o toca \"Jugar\" para reiniciar.</span>`;
       startBtn.textContent = 'Jugar otra vez';
     }
 
     startBtn.addEventListener('click', () => {
       overlayEl.querySelector('.title').textContent = 'Orbit Synthesis';
-      overlayCopyEl.textContent =
-        'Lanza satélites desde el borde para capturar órbitas. Si dos del mismo nivel chocan, se fusionan (Nivel +1) y aumentan su rango y daño. Resiste oleadas de asteroides atraídos por la gravedad. Cada 30s sube el Nivel (más dificultad) y rota el tipo de Planeta Madre. Si el Planeta Madre cae a 0, la partida termina.';
+      overlayCopyEl.innerHTML =
+        'Lanza <b>naves de defensa</b> desde el borde: orbitan y <b>disparan automáticamente</b> a los asteroides.<br/>' +
+        'Ganan experiencia y <b>suben de nivel</b> al destruir enemigos (más daño y alcance).<br/>' +
+        '<b>Jefes</b> cada 5 oleadas: mucha vida y disparan a la nave y a tus defensas.<br/>' +
+        '<b>Power-ups</b>: Escudo (3 impactos), Multi-disparo, Velocidad, Reparación (+25 HP), Daño doble.<br/>' +
+        'Cada 30s sube la dificultad (Nivel). Si la Nave Madre cae a 0, la partida termina.';
       startBtn.textContent = 'Jugar';
       startGame();
     });
