@@ -331,14 +331,14 @@
 
   <div class="hint" id="hint" aria-hidden="true">
     <span class="pill">Orbit Synthesis</span>
-    Mueve el ratón para orbitar, <b>CLIC</b> para disparar. ¡Protege la Nave Madre!
+    Mover: <b>WASD / Flechas</b>, <b>CLIC</b> para disparar. ¡Protege la Nave Madre!
   </div>
 
   <div class="overlay show" id="overlay" role="dialog" aria-modal="true">
     <div class="card">
       <h2 class="title">Orbit Synthesis</h2>
       <p class="sub" id="overlayCopy">
-        Controlas <b>una sola nave</b> que orbita la Nave Madre. <b>Apunta y dispara tú mismo</b> a los asteroides.
+        Controlas <b>una sola nave</b> de forma libre. <b>Apunta y dispara tú mismo</b> a los asteroides.
         Tu nave gana experiencia al destruir enemigos y <b>sube de nivel</b> (más daño y cadencia).
         Cada 30s sube el <b>Nivel</b> (más dificultad) y cada 5 oleadas aparece un <b>JEFE</b> que dispara.
         Los asteroides sueltan <b>power-ups</b>. Si la vida de la Nave Madre llega a 0, la partida termina.
@@ -346,15 +346,15 @@
       <div class="grid2">
         <div class="stat">
           <div class="k">Cómo controlar</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Mueve el ratón</div>
+          <div class="v" style="font-size:13px;font-weight:700;">WASD / Flechas</div>
         </div>
         <div class="stat">
           <div class="k">Objetivo</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Protege la nave</div>
+          <div class="v" style="font-size:13px;font-weight:700;">Protege el núcleo</div>
         </div>
         <div class="stat">
           <div class="k">Disparo</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Clic manual</div>
+          <div class="v" style="font-size:13px;font-weight:700;">Apunta + Clic</div>
         </div>
         <div class="stat">
           <div class="k">Puntuación</div>
@@ -368,7 +368,7 @@
       <div class="grid2">
         <div class="stat">
           <div class="k">Control</div>
-          <div class="v" style="font-size:13px;font-weight:700;">Ratón + clic</div>
+          <div class="v" style="font-size:13px;font-weight:700;">Teclas + ratón</div>
         </div>
         <div class="stat">
           <div class="k">Consejo</div>
@@ -528,7 +528,10 @@
       }
     });
 
+    // SISTEMA DE CONTROL DE TECLAS (WASD)
+    const keys = {};
     window.addEventListener('keydown', (e) => {
+      keys[e.key.toLowerCase()] = true;
       if (e.key.toLowerCase() === 's'){
         muted = !muted;
         muteBtn.textContent = `Sonido: ${muted ? 'OFF' : 'ON'}`;
@@ -543,6 +546,10 @@
       }
       if (e.key === 'Escape' && !overlayEl.classList.contains('show')) overlayEl.classList.add('show');
       else if (e.key === 'Escape' && overlayEl.classList.contains('show') && !game.running) overlayEl.classList.remove('show');
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.key.toLowerCase()] = false;
     });
 
     helpBtn.addEventListener('click', () => {
@@ -869,7 +876,6 @@
       if (floaters.length >= CAPS.floaters) return;
       floaters.push({ text, x,y, vx: rand(-18,18), vy: rand(-52,-86), life:0.95, max:0.95, col: col || 'rgba(215,227,255,.95)' });
     }
-    // bullets removed (shield contact gameplay)
 
     // ---------- Progression ----------
     function startWave(w){
@@ -1207,31 +1213,44 @@
       // ---------- Player Ship ----------
       const ship = game.playerShip;
       if (ship.alive){
-        const px = game.planet.x, py = game.planet.y;
-        const dx = game.pointer.x - px;
-        const dy = game.pointer.y - py;
-        const angle = Math.atan2(dy, dx);
-        const dist = Math.max(1, hypot(dx, dy));
-        const orbitDist = ship.orbitDist + (game.buffs.speedBoost > 0 ? -20 : 0);
-        ship.angle = angle;
-        ship.x = px + Math.cos(angle) * orbitDist;
-        ship.y = py + Math.sin(angle) * orbitDist;
+        let moveX = 0;
+        let moveY = 0;
+
+        // Movimiento por teclado WASD / Flechas
+        if (keys['w'] || keys['arrowup']) moveY -= 1;
+        if (keys['s'] || keys['arrowdown']) moveY += 1;
+        if (keys['a'] || keys['arrowleft']) moveX -= 1;
+        if (keys['d'] || keys['arrowright']) moveX += 1;
+
+        if (moveX !== 0 || moveY !== 0) {
+          const len = Math.hypot(moveX, moveY);
+          const speed = 320 + (game.buffs.speedBoost > 0 ? 120 : 0);
+          ship.x += (moveX / len) * speed * dt;
+          ship.y += (moveY / len) * speed * dt;
+        }
+
+        // Limitar la nave a los bordes de la pantalla
+        ship.x = clamp(ship.x, ship.r, W - ship.r);
+        ship.y = clamp(ship.y, ship.r, H - ship.r);
+
+        // Apuntar hacia el ratón
+        const pointerDx = game.pointer.x - ship.x;
+        const pointerDy = game.pointer.y - ship.y;
+        ship.angle = Math.atan2(pointerDy, pointerDx);
+        
+        // Spin decorativo para partículas si lo necesita tu render original
         ship.spin = (ship.spin + dt * 2) % (Math.PI * 2);
 
-        // Manual shooting
+        // Disparo Manual
         ship.fireCooldown -= dt;
         if (game.pointer.down && ship.fireCooldown <= 0){
           ship.fireCooldown = ship.fireRate;
-          const targetX = game.pointer.x;
-          const targetY = game.pointer.y;
-          const tdx = targetX - ship.x, tdy = targetY - ship.y;
-          const td = Math.max(1, hypot(tdx, tdy));
           const speed = 520 + ship.level*10;
-          const ang = Math.atan2(tdy, tdx);
           const shots = game.buffs.multiShot > 0 ? 3 : 1;
           for (let k=0;k<shots;k++){
+            // Retiramos el rand(-0.02, 0.02) para un tiro principal completamente recto hacia el ratón
             const spread = (k-1) * 0.10;
-            const a2 = ang + spread + (k === 0 ? 0 : rand(-0.02, 0.02));
+            const a2 = ship.angle + spread;
             const dmg = (ship.hitDmg * 0.7) * (game.buffs.damageBoost > 0 ? 2 : 1);
             projectiles.push(makeProjectile(ship.x, ship.y, Math.cos(a2)*speed, Math.sin(a2)*speed, dmg, false, ship.level));
           }
@@ -1975,8 +1994,9 @@
       applyPlanetType();
 
       const s = game.playerShip;
-      s.x = game.planet.x + s.orbitDist;
-      s.y = game.planet.y;
+      // Posición inicial de la nave libre, cerca de la Nave Madre
+      s.x = game.planet.x;
+      s.y = game.planet.y - 120;
       s.angle = 0;
       s.level = 1;
       s.xp = 0;
@@ -2015,7 +2035,7 @@
     startBtn.addEventListener('click', () => {
       overlayEl.querySelector('.title').textContent = 'Orbit Synthesis';
       overlayCopyEl.innerHTML =
-        'Controlas <b>una sola nave</b> que orbita la Nave Madre. <b>Apunta y dispara tú mismo</b> a los asteroides.<br/>' +
+        'Controlas <b>una sola nave</b> de forma libre (WASD/Flechas). <b>Apunta y dispara tú mismo</b> a los asteroides.<br/>' +
         'Tu nave gana experiencia al destruir enemigos y <b>sube de nivel</b> (más daño y cadencia).<br/>' +
         '<b>Jefes</b> cada 5 oleadas: mucha vida y disparan a la nave y a la Nave Madre.<br/>' +
         '<b>Power-ups</b>: Escudo (3 impactos), Multi-disparo, Velocidad, Reparación (+25 HP), Daño doble.<br/>' +
