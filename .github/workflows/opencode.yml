@@ -1,0 +1,21 @@
+name: opencode
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  opencode:
+    # Este 'if' asegura que solo corra cuando tú escribes el comando
+    if: contains(github.event.comment.body, '/oc')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Run OpenCode
+        uses: anomalyco/opencode/github@latest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
