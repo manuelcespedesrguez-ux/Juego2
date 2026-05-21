@@ -287,6 +287,15 @@
       .next{ width: 150px; }
       .hint{ font-size:11px; }
     }
+
+    #evolutionOverlay {
+    display: none; /* Por defecto oculto */
+    z-index: 100;
+    }
+
+    #evolutionOverlay.show {
+      display: flex; /* Cuando añadas la clase .show, se mostrará */
+    }
   </style>
 </head>
 <body>
@@ -366,6 +375,20 @@
       <div class="btnRow">
         <button id="muteBtn" title="Silenciar (S)" aria-label="Silenciar">Sonido: ON</button>
         <button class="primary" id="startBtn">Jugar</button>
+      </div>
+    </div>
+  </div>
+  <div class="overlay" id="evolutionOverlay">
+    <div class="card">
+      <h2 class="title" style="color:var(--neon)">¡EVOLUCIÓN DISPONIBLE!</h2>
+      <p class="sub">Has alcanzado el nivel máximo. Elige tu especialización:</p>
+      <div class="grid2">
+        <button class="primary" id="evoPlasma" onclick="selectEvolution('plasma')">
+          <b>PLASMA</b><br/><small>+Daño / +Cadencia</small>
+        </button>
+        <button class="primary" id="evoSniper" onclick="selectEvolution('sniper')">
+          <b>SNIPER</b><br/><small>+Daño Critico / -Cadencia</small>
+        </button>
       </div>
     </div>
   </div>

@@ -82,3 +82,35 @@ const muteBtn = document.getElementById('muteBtn');
 if (muteBtn){
   muteBtn.addEventListener('click',()=>{ muted=!muted; muteBtn.textContent=`Sonido: ${muted?'OFF':'ON'}`; if(muted&&audioCtx){audioCtx.close();audioCtx=null;} });
 }
+
+const EVOLUTION_TREE = {
+  plasma: { damage: 1.5, fireRate: 0.12 }, // Más rápido
+  sniper: { damage: 3.0, fireRate: 0.40 }  // Más lento pero fuerte
+}
+
+function selectEvolution(type) {
+  const evo = EVOLUTION_TREE[type];
+  game.playerShip.specialization = type;
+  game.playerShip.hitDmg *= evo.damage;
+  game.playerShip.fireRate = evo.fireRate;
+  
+  // Cerrar el menú
+  document.getElementById('evolutionOverlay').classList.remove('show');
+  game.running = true; // Reanudar el bucle de juego
+}
+
+// Dentro de la lógica donde controlas el nivel de la nave
+if (game.playerShip.level >= 5 && !game.playerShip.specialization) {
+  game.running = false; // Pausar juego
+  document.getElementById('evolutionOverlay').classList.add('show');
+}
+
+// Cuando el nivel llega a 5 (o el máximo que decidas)
+function checkEvolution() {
+  const evoOverlay = document.getElementById('evolutionOverlay');
+  if (ship.level >= 5 && !ship.specialization) {
+    evoOverlay.classList.add('show'); // Esto lo hace visible
+    // Aquí deberías pausar tu juego, por ejemplo:
+    game.running = false; 
+  }
+}
