@@ -17,7 +17,7 @@ jobs:
       - name: Run OpenCode
         uses: anomalyco/opencode/github@latest
         env:
-          # Pasamos la API KEY como variable de entorno, no como input
+          # Estas tres líneas son las que te faltan y solucionarán el fallo
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          # Definimos el modelo necesario
           MODEL: anthropic/claude-3-5-sonnet-20240620
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
