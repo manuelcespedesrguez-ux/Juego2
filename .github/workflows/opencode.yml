@@ -7,9 +7,6 @@ jobs:
   opencode:
     if: contains(github.event.comment.body, '/oc')
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      MODEL: anthropic/claude-3-5-sonnet-20240620
     permissions:
       contents: write
       issues: write
@@ -19,5 +16,8 @@ jobs:
         uses: actions/checkout@v6
       - name: Run OpenCode
         uses: anomalyco/opencode/github@latest
-        with:
-          api_key: ${{ secrets.OPENCODE_API_KEY }}
+        env:
+          # Pasamos la API KEY como variable de entorno, no como input
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # Definimos el modelo necesario
+          MODEL: anthropic/claude-3-5-sonnet-20240620
