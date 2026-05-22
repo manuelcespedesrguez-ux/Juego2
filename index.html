@@ -289,13 +289,103 @@
     }
 
     #evolutionOverlay {
-    display: none; /* Por defecto oculto */
-    z-index: 100;
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      background: radial-gradient(900px 700px at 50% 45%, rgba(10,14,24,.65), rgba(0,0,0,.85));
+      backdrop-filter: blur(8px);
+      pointer-events: auto;
+      padding: 18px;
+    }
+    #evolutionOverlay.show {
+      display: flex;
+    }
+    .evo-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 16px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(79,243,255,.22);
+      background: linear-gradient(180deg, rgba(79,243,255,.10), rgba(255,79,240,.06));
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 0.2s, background 0.2s, transform 0.1s;
+      box-shadow: 0 0 0 1px rgba(79,243,255,.08), 0 14px 40px rgba(79,243,255,.10);
+    }
+    .evo-btn:hover {
+      border-color: rgba(79,243,255,.55);
+      background: linear-gradient(180deg, rgba(79,243,255,.20), rgba(255,79,240,.12));
+      transform: translateY(-2px);
+    }
+    .evo-btn .evo-icon { font-size: 28px; }
+    .evo-btn .evo-name { font-size: 15px; font-weight: 900; letter-spacing: .08em; color: var(--neon); }
+    .evo-btn .evo-desc { font-size: 11px; color: var(--muted); line-height: 1.4; text-align: center; }
+    .evo-btn .evo-stats { font-size: 11px; font-weight: 700; color: var(--ok); margin-top: 2px; }
+
+    /* Player HP bar in HUD */
+    .shipHpWrap {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+      border: 1px solid rgba(120,170,255,.12);
+      min-width: 0;
+    }
+    .shipHpBar {
+      flex: 1 1 auto; height: 8px; border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(79,243,255,.14);
+      overflow: hidden; position: relative;
+    }
+    .shipHpFill {
+      position: absolute; inset: 0; width: 100%;
+      transform-origin: left center;
+      background: linear-gradient(90deg, rgba(79,243,255,.95), rgba(255,79,240,.85));
+      box-shadow: 0 0 10px rgba(79,243,255,.25);
     }
 
-    #evolutionOverlay.show {
-      display: flex; /* Cuando añadas la clase .show, se mostrará */
+    /* Minimap */
+    #minimap {
+      position: fixed;
+      left: max(12px, env(safe-area-inset-left));
+      bottom: max(52px, calc(env(safe-area-inset-bottom) + 52px));
+      width: 110px; height: 90px;
+      border-radius: 12px;
+      border: 1px solid rgba(120,170,255,.16);
+      background: rgba(5,7,12,.72);
+      backdrop-filter: blur(6px);
+      z-index: 10;
+      pointer-events: none;
+      overflow: hidden;
     }
+    #minimap canvas { display: block; width: 100%; height: 100%; }
+
+    /* Wave announce banner */
+    #waveBanner {
+      position: fixed;
+      left: 50%; transform: translateX(-50%);
+      top: 50%; margin-top: -28px;
+      z-index: 15;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+      white-space: nowrap;
+      font-size: clamp(28px, 6vw, 52px);
+      font-weight: 900;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--neon);
+      text-shadow: 0 0 28px rgba(79,243,255,.55), 0 0 60px rgba(79,243,255,.22);
+    }
+    #waveBanner.boss-wave {
+      color: var(--danger);
+      text-shadow: 0 0 28px rgba(255,59,92,.65), 0 0 60px rgba(255,59,92,.25);
+    }
+    #waveBanner.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -331,8 +421,22 @@
         </div>
         <div class="hpLabel"><span id="hpTxt">100%</span></div>
       </div>
+      <div class="shipHpWrap">
+        <div class="hpLabel" style="color:var(--neon);white-space:nowrap;">⬡ Nave</div>
+        <div class="shipHpBar">
+          <div class="shipHpFill" id="shipHpFill"></div>
+        </div>
+        <div class="hpLabel"><span id="shipHpTxt">100%</span></div>
+        <div class="hpLabel" style="color:var(--warn);white-space:nowrap;font-size:10px;font-weight:700;" id="dashCdTxt">DASH ✓</div>
+      </div>
     </div>
   </div>
+
+  <div id="minimap" aria-hidden="true">
+    <canvas id="minimapCanvas" width="110" height="90"></canvas>
+  </div>
+
+  <div id="waveBanner" aria-live="assertive"></div>
 
   <button class="helpBtn" id="helpBtn" type="button" aria-label="Ayuda">?</button>
 
@@ -380,16 +484,29 @@
   </div>
   <div class="overlay" id="evolutionOverlay">
     <div class="card">
-      <h2 class="title" style="color:var(--neon)">¡EVOLUCIÓN DISPONIBLE!</h2>
-      <p class="sub">Has alcanzado el nivel máximo. Elige tu especialización:</p>
-      <div class="grid2">
-        <button class="primary" id="evoPlasma" onclick="selectEvolution('plasma')">
-          <b>PLASMA</b><br/><small>+Daño / +Cadencia</small>
+      <h2 class="title" style="color:var(--neon);font-size:22px;letter-spacing:.08em;">⚡ EVOLUCIÓN DISPONIBLE</h2>
+      <p class="sub">Tu nave ha alcanzado el nivel máximo. Elige tu especialización definitiva:</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:12px 0;">
+        <button class="evo-btn" id="evoPlasma">
+          <span class="evo-icon">🔥</span>
+          <span class="evo-name">PLASMA</span>
+          <span class="evo-desc">Ráfagas rápidas de baja carga</span>
+          <span class="evo-stats">+60% Cadencia · x1.5 Daño</span>
         </button>
-        <button class="primary" id="evoSniper" onclick="selectEvolution('sniper')">
-          <b>SNIPER</b><br/><small>+Daño Critico / -Cadencia</small>
+        <button class="evo-btn" id="evoSniper" style="border-color:rgba(255,207,90,.28);background:linear-gradient(180deg,rgba(255,207,90,.10),rgba(255,59,92,.06));">
+          <span class="evo-icon">🎯</span>
+          <span class="evo-name" style="color:var(--warn);">SNIPER</span>
+          <span class="evo-desc">Un disparo letal de largo alcance</span>
+          <span class="evo-stats">x3 Daño · −55% Cadencia</span>
+        </button>
+        <button class="evo-btn" id="evoGuardian" style="border-color:rgba(82,255,159,.28);background:linear-gradient(180deg,rgba(82,255,159,.10),rgba(79,243,255,.06));">
+          <span class="evo-icon">🛡️</span>
+          <span class="evo-name" style="color:var(--ok);">GUARDIÁN</span>
+          <span class="evo-desc">Equilibrado con escudos pasivos</span>
+          <span class="evo-stats">+HP · Escudo automático</span>
         </button>
       </div>
+      <p class="sub" style="margin:0;font-size:11px;color:var(--muted);">Esta elección es permanente para esta partida.</p>
     </div>
   </div>
 
@@ -467,6 +584,13 @@
     const hpFillEl = $('hpFill');
     const hpTxtEl = $('hpTxt');
     const hpPulseEl = $('hpPulse');
+    const shipHpFillEl = $('shipHpFill');
+    const shipHpTxtEl = $('shipHpTxt');
+    const dashCdTxtEl = $('dashCdTxt');
+    const minimapCanvas = $('minimapCanvas');
+    const minimapCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
+    const waveBannerEl = $('waveBanner');
+    let waveBannerTimer = 0;
 
     const overlayEl = $('overlay');
     const overlayCopyEl = $('overlayCopy');
@@ -528,6 +652,13 @@
     function sfxBossAlert(){
       beep('square', 140, 0.12, 0.07);
       beep('square', 100, 0.15, 0.07);
+    }
+    function sfxEvolution(){
+      // Dramatic ascending chord
+      beep('sine', 330, 0.25, 0.12);
+      beep('sine', 440, 0.22, 0.10);
+      beep('sine', 660, 0.20, 0.09);
+      beep('triangle', 880, 0.18, 0.07);
     }
 
     muteBtn.addEventListener('click', () => {
@@ -625,6 +756,9 @@
       bossActive: false,
       bossSpawnWave: 5,
 
+      evolution: null,  // null | 'plasma' | 'sniper' | 'guardian'
+      evolutionLevel: 10, // level at which evolution triggers
+
       buffs: {
         multiShot: 0,
         speedBoost: 0,
@@ -641,6 +775,8 @@
     const projectiles = [];
     const bosses = [];
     const powerups = [];
+    // Trail system: array of {x,y,col,life,max,sz}
+    const trails = [];
 
     // ---------- Planet Types + Score Upgrades ----------
     const PLANET_TYPES = [
@@ -802,6 +938,13 @@
         speedBias *= 1.55;
         impactMul = 0.65;
         scoreMul = 0.75;
+      } else if (kind === 'hunter'){
+        // Hunts the player ship directly
+        r *= 0.80;
+        hp *= 0.90;
+        speedBias *= 1.25;
+        impactMul = 0.90;
+        scoreMul = 1.40;
       } else {
         kind = 'rock';
       }
@@ -890,6 +1033,36 @@
       if (floaters.length >= CAPS.floaters) return;
       floaters.push({ text, x,y, vx: rand(-18,18), vy: rand(-52,-86), life:0.95, max:0.95, col: col || 'rgba(215,227,255,.95)' });
     }
+    function addTrail(x, y, sz, col){
+      trails.push({ x, y, sz, col, life: 0.22, max: 0.22 });
+    }
+
+    // ---------- Evolution ----------
+    function selectEvolution(type){
+      const s = game.playerShip;
+      game.evolution = type;
+      if (type === 'plasma'){
+        s.hitDmg *= 1.5;
+        s.fireRate = Math.max(0.05, s.fireRate * 0.4); // 60% faster
+        addFloater('MODO PLASMA ACTIVADO!', s.x, s.y - 30, 'rgba(79,243,255,.95)');
+      } else if (type === 'sniper'){
+        s.hitDmg *= 3.0;
+        s.fireRate = s.fireRate * 2.2; // slower but deadly
+        addFloater('MODO SNIPER ACTIVADO!', s.x, s.y - 30, 'rgba(255,207,90,.95)');
+      } else if (type === 'guardian'){
+        s.hpMax *= 2.0;
+        s.hp = s.hpMax;
+        game.buffs.shield = 5;
+        addFloater('MODO GUARDIÁN ACTIVADO!', s.x, s.y - 30, 'rgba(82,255,159,.95)');
+      }
+      $('evolutionOverlay').classList.remove('show');
+      game.running = true;
+      sfxEvolution();
+    }
+
+    $('evoPlasma').addEventListener('click', () => selectEvolution('plasma'));
+    $('evoSniper').addEventListener('click', () => selectEvolution('sniper'));
+    $('evoGuardian').addEventListener('click', () => selectEvolution('guardian'));
 
     // ---------- Progression ----------
     function startWave(w){
@@ -903,6 +1076,14 @@
       waveEl.textContent = String(game.wave);
       addFloater(`OLEADA ${game.wave}`, game.planet.x, game.planet.y - game.planet.r - 42, 'rgba(79,243,255,.95)');
 
+      // Wave banner
+      if (waveBannerEl){
+        waveBannerEl.classList.remove('boss-wave');
+        waveBannerEl.textContent = `OLEADA  ${game.wave}`;
+        waveBannerEl.classList.add('show');
+        waveBannerTimer = 1.6;
+      }
+
       // Boss every N waves
       if (w % game.bossSpawnWave === 0 && !game.bossActive){
         game.bossActive = true;
@@ -910,6 +1091,12 @@
         bosses.push(boss);
         sfxBossAlert();
         addFloater('¡JEFE!', game.planet.x, game.planet.y - game.planet.r - 70, 'rgba(255,59,92,.95)');
+        if (waveBannerEl){
+          waveBannerEl.classList.add('boss-wave');
+          waveBannerEl.textContent = '⚠  JEFE  ⚠';
+          waveBannerEl.classList.add('show');
+          waveBannerTimer = 2.2;
+        }
       }
     }
 
@@ -942,6 +1129,7 @@
       if (lvl >= 2 && p < 0.18) kind = 'runner';
       else if (lvl >= 4 && p < 0.32) kind = 'tank';
       else if (lvl >= 6 && p < 0.46) kind = 'splitter';
+      else if (lvl >= 5 && p < 0.60) kind = 'hunter';
 
       asteroids.push(makeAsteroid(kind, tier, x, y, vx, vy, w, lvl));
       game.waveSpawned++;
@@ -1039,6 +1227,12 @@
           const ang = rand(0, Math.PI*2);
           const sp = rand(60, 200);
           addParticle(s.x, s.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.25,0.6), rand(1.4,3.0), colorForLevel(s.level), glowForLevel(s.level));
+        }
+        // Evolution trigger
+        if (s.level >= game.evolutionLevel && !game.evolution){
+          game.running = false;
+          $('evolutionOverlay').classList.add('show');
+          sfxEvolution();
         }
       }
     }
@@ -1254,14 +1448,15 @@
           // Multiplicar velocidad si el Dash está activo
           if (ship.dashTimer > 0) {
             speed *= 2.8;
-            // Dejar una estela de partículas
-            for (let i = 0; i < 2; i++) {
+            // Dejar una estela épica de dash
+            for (let i = 0; i < 4; i++) {
+              addTrail(ship.x + rand(-4,4), ship.y + rand(-4,4), rand(4, 9), 'rgba(79,243,255,.55)');
               addParticle(
                 ship.x + rand(-5, 5), 
                 ship.y + rand(-5, 5), 
-                rand(-40, 40), 
-                rand(-40, 40), 
-                rand(0.15, 0.3), 
+                rand(-60, 60), 
+                rand(-60, 60), 
+                rand(0.10, 0.22), 
                 rand(1.5, 3.0), 
                 'rgba(79, 243, 255, 0.7)', 
                 'rgba(79, 243, 255, 0.1)'
@@ -1291,14 +1486,17 @@
           ship.fireCooldown = ship.fireRate;
           const speed = 520 + ship.level*10;
           const shots = game.buffs.multiShot > 0 ? 3 : 1;
+          // Spawn from nose tip so bullets align with aim line
+          const bx = ship.x + Math.cos(ship.angle) * ship.r * 1.4;
+          const by = ship.y + Math.sin(ship.angle) * ship.r * 1.4;
           for (let k=0;k<shots;k++){
             const spread = (k-1) * 0.10;
             const a2 = ship.angle + spread;
             const dmg = (ship.hitDmg * 0.7) * (game.buffs.damageBoost > 0 ? 2 : 1);
-            projectiles.push(makeProjectile(ship.x, ship.y, Math.cos(a2)*speed, Math.sin(a2)*speed, dmg, false, ship.level));
+            projectiles.push(makeProjectile(bx, by, Math.cos(a2)*speed, Math.sin(a2)*speed, dmg, false, ship.level));
           }
           sfxLaser(ship.level);
-          for (let k=0;k<2;k++) addParticle(ship.x, ship.y, rand(-20,20), rand(-20,20), rand(0.06,0.12), rand(1,2), 'rgba(79,243,255,.35)', 'rgba(79,243,255,.15)');
+          for (let k=0;k<2;k++) addParticle(bx, by, rand(-20,20), rand(-20,20), rand(0.06,0.12), rand(1,2), 'rgba(79,243,255,.35)', 'rgba(79,243,255,.15)');
         }
       }
 
@@ -1393,8 +1591,24 @@
         
         if (a.hitTimer > 0) a.hitTimer -= dt; // <-- Disminuir hit timer
 
-        applyCentralGravity(a, dt);
-        damp(a, dt, 0.06);
+        // Hunter: steer toward player ship
+        if (a.kind === 'hunter' && game.playerShip.alive){
+          const tx = game.playerShip.x - a.x;
+          const ty = game.playerShip.y - a.y;
+          const td = Math.max(1, Math.hypot(tx, ty));
+          const turnForce = 160;
+          a.vx += (tx / td) * turnForce * dt;
+          a.vy += (ty / td) * turnForce * dt;
+          // Speed cap
+          const spd = Math.hypot(a.vx, a.vy);
+          if (spd > 160){ a.vx = (a.vx/spd)*160; a.vy = (a.vy/spd)*160; }
+          // Trail
+          if (Math.random() < 0.4) addTrail(a.x, a.y, a.r * 0.5, 'rgba(255,79,240,.45)');
+        } else {
+          applyCentralGravity(a, dt);
+          damp(a, dt, 0.06);
+        }
+
         integrate(a, dt);
         a.spin += dt * (0.9 + a.tier*0.2);
 
@@ -1540,6 +1754,19 @@
       game.shake.x = (Math.random()*2-1) * sm;
       game.shake.y = (Math.random()*2-1) * sm;
 
+      // Update trails
+      for (let i=trails.length-1;i>=0;i--){
+        trails[i].life -= dt;
+        if (trails[i].life <= 0) trails.splice(i,1);
+      }
+
+      // Wave banner timer
+      if (waveBannerTimer > 0){
+        waveBannerTimer -= dt;
+        if (waveBannerEl) waveBannerEl.style.opacity = String(clamp(Math.min(1, waveBannerTimer / 0.4, (1.6 - (1.6 - waveBannerTimer)) / 0.4), 0, 1));
+        if (waveBannerTimer <= 0 && waveBannerEl){ waveBannerEl.classList.remove('show'); waveBannerEl.style.opacity = ''; }
+      }
+
       scoreEl.textContent = String(Math.floor(game.score));
       bestEl.textContent = String(game.bestLevel);
       comboEl.textContent = `x${game.combo}`;
@@ -1547,15 +1774,75 @@
       const hpPct = (game.planet.hp / game.planet.hpMax);
       hpFillEl.style.transform = `scaleX(${clamp(hpPct, 0, 1)})`;
       hpTxtEl.textContent = `${Math.floor(hpPct*100)}%`;
+
+      // Player ship HUD
+      const sh = game.playerShip;
+      if (shipHpFillEl){
+        const sPct = clamp(sh.hp / sh.hpMax, 0, 1);
+        shipHpFillEl.style.transform = `scaleX(${sPct})`;
+        shipHpFillEl.style.background = sPct > 0.4 ? '' : 'linear-gradient(90deg, rgba(255,59,92,.95), rgba(255,207,90,.85))';
+        if (shipHpTxtEl) shipHpTxtEl.textContent = `${Math.floor(sPct*100)}%`;
+      }
+      if (dashCdTxtEl){
+        if (sh.dashCooldown > 0){
+          dashCdTxtEl.textContent = `DASH ${sh.dashCooldown.toFixed(1)}s`;
+          dashCdTxtEl.style.color = 'rgba(215,227,255,.5)';
+        } else {
+          dashCdTxtEl.textContent = 'DASH ✓';
+          dashCdTxtEl.style.color = 'var(--warn)';
+        }
+      }
+
+      // Draw minimap
+      drawMinimap();
+    }
+
+    function drawMinimap(){
+      if (!minimapCtx || !game.running) return;
+      const mw = 110, mh = 90;
+      minimapCtx.clearRect(0, 0, mw, mh);
+      minimapCtx.fillStyle = 'rgba(5,7,12,.0)';
+      minimapCtx.fillRect(0,0,mw,mh);
+      const sx = mw / W, sy = mh / H;
+      // Planet
+      const px = game.planet.x * sx, py = game.planet.y * sy;
+      minimapCtx.beginPath();
+      minimapCtx.arc(px, py, Math.max(3, game.planet.r * sx), 0, Math.PI*2);
+      minimapCtx.fillStyle = 'rgba(79,243,255,.65)';
+      minimapCtx.fill();
+      // Asteroids
+      minimapCtx.fillStyle = 'rgba(160,180,255,.55)';
+      for (let i=0;i<asteroids.length;i++){
+        const a = asteroids[i];
+        if (!a.alive) continue;
+        const col = a.kind === 'hunter' ? 'rgba(255,79,240,.85)' : a.kind === 'tank' ? 'rgba(255,207,90,.7)' : 'rgba(160,180,255,.55)';
+        minimapCtx.fillStyle = col;
+        minimapCtx.beginPath();
+        minimapCtx.arc(a.x*sx, a.y*sy, Math.max(1.5, a.r*sx*0.7), 0, Math.PI*2);
+        minimapCtx.fill();
+      }
+      // Bosses
+      for (let i=0;i<bosses.length;i++){
+        const b = bosses[i];
+        if (!b.alive) continue;
+        minimapCtx.fillStyle = 'rgba(255,59,92,.9)';
+        minimapCtx.beginPath();
+        minimapCtx.arc(b.x*sx, b.y*sy, Math.max(3, b.r*sx*0.8), 0, Math.PI*2);
+        minimapCtx.fill();
+      }
+      // Player ship
+      const s = game.playerShip;
+      if (s.alive){
+        minimapCtx.fillStyle = 'rgba(255,255,255,.95)';
+        minimapCtx.beginPath();
+        minimapCtx.arc(s.x*sx, s.y*sy, 2.5, 0, Math.PI*2);
+        minimapCtx.fill();
+      }
     }
 
     function draw(){
-      // Dibuja una línea de depuración temporal
-      ctx.strokeStyle = 'red';
-      ctx.beginPath();
-      ctx.moveTo(ship.x, ship.y);
-      ctx.lineTo(mouse.x, mouse.y); // Tu objetivo
-      ctx.stroke();
+      ctx.save();
+      ctx.translate(game.shake.x, game.shake.y);
 
       // PARALLAX BACKGROUND
       if (bgCanvas) {
@@ -1638,6 +1925,7 @@
         if (a.kind === 'tank') edge = 'rgba(255,79,240,.26)';
         if (a.kind === 'splitter') edge = 'rgba(255,207,90,.22)';
         if (a.kind === 'shard') edge = 'rgba(82,255,159,.18)';
+        if (a.kind === 'hunter') edge = 'rgba(255,60,180,.75)';
 
         // HIT FLASH RENDER
         if (a.hitTimer > 0) {
@@ -1762,7 +2050,11 @@
       // player ship
       const ship = game.playerShip;
       if (ship.alive){
-        // aim line (declared here so ship is in scope)
+        // Nose position (tip of the ship triangle in world coords)
+        const noseX = ship.x + Math.cos(ship.angle) * ship.r * 1.4;
+        const noseY = ship.y + Math.sin(ship.angle) * ship.r * 1.4;
+
+        // aim line — starts from nose, goes toward cursor
         const aimCol = glowForLevel(ship.level);
         ctx.save();
         ctx.globalAlpha = 0.25 + (game.pointer.down ? 0.20 : 0);
@@ -1772,7 +2064,7 @@
         ctx.shadowBlur = 12;
         ctx.setLineDash([6, 8]);
         ctx.beginPath();
-        ctx.moveTo(ship.x, ship.y);
+        ctx.moveTo(noseX, noseY);
         ctx.lineTo(game.pointer.x, game.pointer.y);
         ctx.stroke();
         ctx.setLineDash([]);
@@ -1895,6 +2187,21 @@
         ctx.fillText(label, 0, 1);
         ctx.restore();
       }
+
+      // Trails (behind projectiles / dash)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i=0;i<trails.length;i++){
+        const tr = trails[i];
+        const a = tr.life / tr.max;
+        ctx.globalAlpha = a * 0.7;
+        ctx.fillStyle = tr.col;
+        ctx.beginPath();
+        ctx.arc(tr.x, tr.y, tr.sz * a, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
 
       // particles (no per-particle shadowBlur; much faster)
       ctx.save();
@@ -2042,6 +2349,7 @@
       game.buffs.speedBoost = 0;
       game.buffs.damageBoost = 0;
       game.buffs.shield = 0;
+      game.evolution = null;
 
       game.level = 1;
       game.levelTimer = 0;
@@ -2108,9 +2416,11 @@
       overlayCopyEl.innerHTML =
         'Controlas <b>una sola nave</b> de forma libre (WASD/Flechas). <b>Apunta y dispara tú mismo</b> a los asteroides.<br/>' +
         'Usa el <b>DASH (Espacio)</b> para esquivar y moverte rápido.<br/>' +
-        'Tu nave gana experiencia al destruir enemigos y <b>sube de nivel</b>.<br/>' +
+        'Tu nave gana experiencia al destruir enemigos y <b>sube de nivel</b>. Al nivel 10: <b>elige tu EVOLUCIÓN</b>.<br/>' +
         '<b>Jefes</b> cada 5 oleadas: mucha vida y disparan a la nave y a la Nave Madre.<br/>' +
+        '<b>Nuevos enemigos</b>: Hunters (rosa) te persiguen directamente. ¡Usa el DASH!<br/>' +
         '<b>Power-ups</b>: Escudo, Multi-disparo, Velocidad, Reparación (+25 HP), Daño doble.<br/>' +
+        'Observa el <b>minimapa</b> (abajo-izquierda) para anticipar amenazas.<br/>' +
         'Si la Nave Madre cae a 0, la partida termina.';
       startBtn.textContent = 'Jugar';
       startGame();
