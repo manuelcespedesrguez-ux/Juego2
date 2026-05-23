@@ -742,6 +742,7 @@
         hitDmg:10,
         fireRate:0.18, fireCooldown:0,
         dashCooldown:0, dashTimer:0, // <--- Añadido estado para el Dash
+        invTimer: 0,   // invincibility after being hit
         kills:0, alive:true
       },
 
@@ -763,7 +764,8 @@
         multiShot: 0,
         speedBoost: 0,
         damageBoost: 0,
-        shield: 0
+        shield: 0,
+        autofire: 0
       },
 
       powerupMsgTimer: 0
@@ -900,73 +902,86 @@
       bgCtx.globalCompositeOperation = 'source-over';
     }
 
-    // ---------- Entities ----------
-    function makeAsteroid(kind, tier, x, y, vx, vy, wave, level){
-      const baseR = 10 + tier*2.2 + Math.min(6, wave*0.25);
-      const baseHp = 22 + tier*14 + wave*3.8 + level*3.5;
-      const baseSpeedBias = 1 + wave*0.03 + tier*0.06 + level*0.045;
-
-      let r = baseR;
-      let hp = baseHp;
-      let speedBias = baseSpeedBias;
-      let impactMul = 1.0;
-      let scoreMul = 1.0;
-      let split = 0;
-
-      if (kind === 'runner'){
-        r *= 0.85;
-        hp *= 0.70;
-        speedBias *= 1.45;
-        impactMul = 0.85;
-        scoreMul = 0.95;
-      } else if (kind === 'tank'){
-        r *= 1.15;
-        hp *= 1.85;
-        speedBias *= 0.78;
-        impactMul = 1.25;
-        scoreMul = 1.25;
-      } else if (kind === 'splitter'){
-        r *= 1.00;
-        hp *= 1.05;
-        speedBias *= 1.05;
-        impactMul = 1.05;
-        scoreMul = 1.10;
-        split = 2;
-      } else if (kind === 'shard'){
-        r *= 0.70;
-        hp *= 0.42;
-        speedBias *= 1.55;
-        impactMul = 0.65;
-        scoreMul = 0.75;
-      } else if (kind === 'hunter'){
-        // Hunts the player ship directly
-        r *= 0.80;
-        hp *= 0.90;
-        speedBias *= 1.25;
-        impactMul = 0.90;
-        scoreMul = 1.40;
-      } else {
-        kind = 'rock';
+    // ---------- Enemy Ship Factory ----------
+    // Types unlock progressively. Each has: r, hp, speed, fireRate, weapon, color, score, xp
+    const ENEMY_DEFS = {
+      scout: {
+        r: 9, hpBase: 18, speedBias: 1.6, fireRate: 2.2,
+        weapon: 'laser',   // single fast shot at player
+        col: 'rgba(79,243,255,1)', glow: 'rgba(79,243,255,.7)',
+        scoreMul: 1.0, xp: 1, unlockLevel: 1
+      },
+      fighter: {
+        r: 12, hpBase: 40, speedBias: 1.1, fireRate: 1.5,
+        weapon: 'burst',   // 2-shot burst at player
+        col: 'rgba(255,207,90,1)', glow: 'rgba(255,207,90,.7)',
+        scoreMul: 1.3, xp: 2, unlockLevel: 2
+      },
+      tank: {
+        r: 18, hpBase: 120, speedBias: 0.6, fireRate: 2.8,
+        weapon: 'heavy',   // slow heavy shot, big damage
+        col: 'rgba(255,59,92,1)', glow: 'rgba(255,59,92,.7)',
+        scoreMul: 1.8, xp: 3, unlockLevel: 3
+      },
+      sniper: {
+        r: 8, hpBase: 25, speedBias: 0.9, fireRate: 3.5,
+        weapon: 'snipe',   // long-range fast accurate shot
+        col: 'rgba(255,79,240,1)', glow: 'rgba(255,79,240,.7)',
+        scoreMul: 1.5, xp: 2, unlockLevel: 4
+      },
+      bomber: {
+        r: 14, hpBase: 55, speedBias: 0.8, fireRate: 4.0,
+        weapon: 'spread',  // 3-way spread shot
+        col: 'rgba(255,130,50,1)', glow: 'rgba(255,130,50,.7)',
+        scoreMul: 2.0, xp: 3, unlockLevel: 5
+      },
+      stealth: {
+        r: 10, hpBase: 30, speedBias: 1.3, fireRate: 1.8,
+        weapon: 'laser',
+        col: 'rgba(160,80,255,1)', glow: 'rgba(160,80,255,.7)',
+        scoreMul: 1.6, xp: 2, unlockLevel: 7
       }
+    };
 
-      r = Math.max(6, r);
-      hp = Math.max(6, hp);
+    function makeEnemy(kind, wave, level){
+      const def = ENEMY_DEFS[kind] || ENEMY_DEFS.scout;
+      const edge = randi(0,3);
+      let x, y;
+      const pad = 40;
+      if (edge === 0){ x = rand(pad, W-pad); y = -pad; }
+      else if (edge === 1){ x = W+pad; y = rand(pad, H-pad); }
+      else if (edge === 2){ x = rand(pad, W-pad); y = H+pad; }
+      else { x = -pad; y = rand(pad, H-pad); }
 
-      const mass = Math.pow(r, 2) * 0.045;
+      // Move toward planet initially
+      const dx = game.planet.x - x, dy = game.planet.y - y;
+      const d = Math.max(1, hypot(dx,dy));
+      const baseSpeed = rand(50, 90) * def.speedBias * (1 + wave*0.018 + level*0.012);
+      const hp = def.hpBase * (1 + wave*0.12 + level*0.08);
+
       return {
-        kind,
-        tier,
-        x, y, vx: vx*speedBias, vy: vy*speedBias,
-        r,
-        mass,
-        hp,
-        hpMax: hp,
-        impactMul,
-        scoreMul,
-        split,
+        kind, x, y,
+        vx: (dx/d)*baseSpeed, vy: (dy/d)*baseSpeed,
+        r: def.r,
+        hp, hpMax: hp,
+        col: def.col, glow: def.glow,
+        weapon: def.weapon,
+        fireRate: def.fireRate * (1 - wave*0.012),
+        fireCooldown: rand(0.5, def.fireRate),
+        burstLeft: 0,
+        burstTimer: 0,
+        scoreMul: def.scoreMul,
+        xpVal: def.xp,
         spin: rand(0, Math.PI*2),
-        hitTimer: 0, // <--- Variable para hit flash añadida
-        alive: true
+        angle: Math.atan2(dy, dx),
+        hitTimer: 0,
+        invTimer: 0,
+        wave, level,
+        alive: true,
+        // stealth enemy fades in/out
+        alpha: kind === 'stealth' ? 0.2 : 1.0,
+        stealthTimer: 0,
+        stealthVisible: false,
       };
     }
 
@@ -976,11 +991,19 @@
     }
 
     // ---------- Boss Factory ----------
+    // Boss types rotate every 5 waves
+    const BOSS_DEFS = [
+      { name:'NEXUS',   col:'rgba(255,59,92,1)',  glow:'rgba(255,59,92,.7)',  rBase:32, pattern:'spread',  desc:'Disparo en abanico' },
+      { name:'VORTEX',  col:'rgba(160,80,255,1)', glow:'rgba(160,80,255,.7)', rBase:28, pattern:'spiral',  desc:'Espiral de plasma' },
+      { name:'BASTION', col:'rgba(255,207,90,1)', glow:'rgba(255,207,90,.7)', rBase:36, pattern:'salvo',   desc:'Salva triple' },
+      { name:'PHANTOM', col:'rgba(79,243,255,1)', glow:'rgba(79,243,255,.7)', rBase:26, pattern:'snipe',   desc:'Francotirador' },
+    ];
+
     function makeBoss(wave, level){
-      const r = 28 + Math.min(wave, 15)*1.5;
-      const hp = 180 + wave*35 + level*20;
-      const mass = Math.pow(r, 2) * 0.06;
-      const edge = randi(0, 3);
+      const def = BOSS_DEFS[Math.floor((wave/5 - 1)) % BOSS_DEFS.length];
+      const r = def.rBase + Math.min(wave, 20)*0.8;
+      const hp = 250 + wave*45 + level*25;
+      const edge = randi(0,3);
       let x, y;
       const pad = 40;
       if (edge === 0){ x = rand(pad, W-pad); y = -pad; }
@@ -989,39 +1012,51 @@
       else { x = -pad; y = rand(pad, H-pad); }
       const dx = game.planet.x - x, dy = game.planet.y - y;
       const d = Math.max(1, hypot(dx,dy));
-      const speed = rand(18, 28) * (1 + wave*0.015);
+      const speed = rand(22, 35) * (1 + wave*0.012);
       return {
         x, y,
         vx: (dx/d)*speed, vy: (dy/d)*speed,
-        r, hp, hpMax: hp, mass,
+        r, hp, hpMax: hp,
+        col: def.col, glow: def.glow,
+        name: def.name, pattern: def.pattern,
+        fireRate: Math.max(0.9, 2.4 - wave*0.035),
+        fireCooldown: 1.5,
+        spiralAngle: 0,
+        spin: 0, hitTimer: 0,
         wave, level,
-        fireCooldown: 0,
-        fireRate: Math.max(1.2, 2.2 - wave*0.04),
-        spin: 0,
-        hitTimer: 0, // <--- Variable para hit flash añadida
+        phase: 0,  // 0=normal, 1=enraged (hp<50%)
         alive: true
       };
     }
 
     // ---------- Power-up Factory ----------
-    const POWERUP_TYPES = ['shield','multishot','speed','repair','damage'];
+    const POWERUP_TYPES = ['shield','multishot','speed','repair','damage','shipRepair','autofire','nuke'];
     const POWERUP_COLORS = {
-      shield: 'rgba(79,243,255,.95)',
-      multishot: 'rgba(255,207,90,.95)',
-      speed: 'rgba(82,255,159,.95)',
-      repair: 'rgba(255,79,240,.95)',
-      damage: 'rgba(255,59,92,.95)'
+      shield:     'rgba(79,243,255,.95)',
+      multishot:  'rgba(255,207,90,.95)',
+      speed:      'rgba(82,255,159,.95)',
+      repair:     'rgba(255,79,240,.95)',
+      damage:     'rgba(255,59,92,.95)',
+      shipRepair: 'rgba(255,160,60,.95)',
+      autofire:   'rgba(200,255,100,.95)',
+      nuke:       'rgba(255,255,255,.95)'
     };
     const POWERUP_LABELS = {
-      shield: 'ESCUDO',
-      multishot: 'MULTI-TIRO',
-      speed: 'VELOCIDAD',
-      repair: 'REPARACIÓN',
-      damage: 'DAÑO'
+      shield:     '🛡',
+      multishot:  '✦',
+      speed:      '⚡',
+      repair:     '♥',
+      damage:     '🔥',
+      shipRepair: '+',
+      autofire:   '◎',
+      nuke:       '💥'
     };
+    const POWERUP_ICONS = POWERUP_LABELS;
     function makePowerup(x, y, type){
-      const t = type || POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)];
-      return { x, y, vx: rand(-15,15), vy: rand(-40,-20), r: 9, type: t, life: 6, alive: true };
+      // Common drops: repair/shield/speed/multishot. Rare: nuke, autofire
+      const common = ['shield','multishot','speed','repair','damage','shipRepair','autofire'];
+      const t = type || common[randi(0, common.length-1)];
+      return { x, y, vx: rand(-20,20), vy: rand(-50,-25), r: 10, type: t, life: 8, alive: true };
     }
 
     const CAPS = { particles: 700, floaters: 80 };
@@ -1100,38 +1135,26 @@
       }
     }
 
-    function spawnAsteroid(){
-      const edge = randi(0,3);
-      let x,y;
-      const pad = 26;
-      if (edge === 0){ x = rand(pad, W-pad); y = -pad; }
-      if (edge === 1){ x = W+pad; y = rand(pad, H-pad); }
-      if (edge === 2){ x = rand(pad, W-pad); y = H+pad; }
-      if (edge === 3){ x = -pad; y = rand(pad, H-pad); }
-
-      const dx = game.planet.x - x;
-      const dy = game.planet.y - y;
-      const d = Math.max(1, hypot(dx,dy));
-      const nx = dx/d, ny = dy/d;
-      const tx = -ny, ty = nx;
-      const w = game.wave;
+    function spawnEnemy(){
       const lvl = game.level;
-      const speed = rand(36, 62) * (1 + w*0.028);
-      const tangent = rand(-0.55, 0.55) * (0.9 + w*0.01);
-      const vx = nx*speed + tx*speed*tangent;
-      const vy = ny*speed + ty*speed*tangent;
-
-      const tier = clamp(Math.floor((w-1)/3) + (Math.random()<0.22 ? 1 : 0) + (lvl>6 && Math.random()<0.12 ? 1 : 0), 0, 5);
-
-      // Kind unlocks with level/time.
-      let kind = 'rock';
-      const p = Math.random();
-      if (lvl >= 2 && p < 0.18) kind = 'runner';
-      else if (lvl >= 4 && p < 0.32) kind = 'tank';
-      else if (lvl >= 6 && p < 0.46) kind = 'splitter';
-      else if (lvl >= 5 && p < 0.60) kind = 'hunter';
-
-      asteroids.push(makeAsteroid(kind, tier, x, y, vx, vy, w, lvl));
+      const w = game.wave;
+      // Available kinds based on level
+      const pool = ['scout'];
+      if (lvl >= 2) pool.push('fighter');
+      if (lvl >= 3) pool.push('tank');
+      if (lvl >= 4) pool.push('sniper');
+      if (lvl >= 5) pool.push('bomber');
+      if (lvl >= 7) pool.push('stealth');
+      // Weight toward higher-tier enemies as level grows
+      const weights = pool.map((_,i) => Math.pow(1.5, i));
+      const totalW = weights.reduce((a,b)=>a+b,0);
+      let rng = Math.random()*totalW;
+      let kind = pool[0];
+      for (let i=0;i<pool.length;i++){
+        rng -= weights[i];
+        if (rng <= 0){ kind = pool[i]; break; }
+      }
+      asteroids.push(makeEnemy(kind, w, lvl));
       game.waveSpawned++;
       game.waveAlive++;
     }
@@ -1237,51 +1260,41 @@
       }
     }
 
-    function killAsteroid(a){
+    function killEnemy(a){
       if (!a.alive) return;
       a.alive = false;
       game.waveAlive = Math.max(0, game.waveAlive - 1);
 
-      if (a.split > 0){
-        for (let n=0;n<a.split;n++){
-          const ang = rand(0, Math.PI*2);
-          const sp = rand(40, 90);
-          const vx2 = Math.cos(ang)*sp + a.vx*0.25;
-          const vy2 = Math.sin(ang)*sp + a.vy*0.25;
-          asteroids.push(makeAsteroid('shard', Math.max(0, a.tier-1), a.x + Math.cos(ang)*a.r*0.25, a.y + Math.sin(ang)*a.r*0.25, vx2, vy2, game.wave, game.level));
-          game.waveAlive++;
-        }
-      }
-
       const dmgMul = game.buffs.damageBoost > 0 ? 2 : 1;
-      const pts = Math.floor((28 + a.tier*18 + game.wave*2.2 + (game.level-1)*2.0) * a.scoreMul * dmgMul);
+      const pts = Math.floor((25 + game.wave*3 + (game.level-1)*2) * (a.scoreMul||1) * dmgMul);
       game.score += pts;
       addFloater(`+${pts}`, a.x, a.y, 'rgba(82,255,159,.95)');
 
-      giveXPToPlayer(1 + Math.floor(a.tier*0.5));
+      giveXPToPlayer(a.xpVal || 1);
 
-      // Combo based on kill streak
+      // Combo
       const nowCombo = (game.comboTimer > 0) ? Math.min(25, game.combo + 1) : 1;
       game.combo = nowCombo;
       game.comboPeak = Math.max(game.comboPeak, game.combo);
       game.comboTimer = 1.0;
 
-      // Powerup drop
-      if (Math.random() < 0.10){
-        const type = POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)];
-        powerups.push(makePowerup(a.x, a.y, type));
+      // Powerup drop: higher chance from tougher enemies
+      const dropChance = { scout:0.08, fighter:0.14, tank:0.22, sniper:0.16, bomber:0.20, stealth:0.18 }[a.kind] || 0.10;
+      if (Math.random() < dropChance){
+        const pool = ['shipRepair','shield','multishot','speed','damage','autofire'];
+        // Rare nuke
+        if (Math.random() < 0.05) pool.push('nuke');
+        powerups.push(makePowerup(a.x, a.y, pool[randi(0, pool.length-1)]));
       }
 
-      if (a.kind !== 'shard'){
-        sfxExplosion();
-        for (let k=0;k<20;k++){
-          const ang = rand(0, Math.PI*2);
-          const sp = rand(60, 240);
-          addParticle(a.x, a.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.22,0.55), rand(1.4,3.0), 'rgba(79,243,255,.55)', 'rgba(79,243,255,.22)');
-          addParticle(a.x, a.y, rand(-a.r*0.8,a.r*0.8), rand(-a.r*0.8,a.r*0.8), rand(0.15,0.35), rand(0.8,1.8), 'rgba(255,255,255,.6)', 'rgba(255,255,255,.2)');
-        }
+      sfxExplosion();
+      const col = a.col || 'rgba(79,243,255,.55)';
+      for (let k=0;k<22;k++){
+        const ang = rand(0, Math.PI*2);
+        const sp = rand(60, 260);
+        addParticle(a.x, a.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.22,0.58), rand(1.4,3.2), col, 'rgba(255,255,255,.2)');
       }
-      game.shake.mag = Math.min(9, game.shake.mag + 1.35);
+      game.shake.mag = Math.min(9, game.shake.mag + 1.2);
     }
 
     function killBoss(b){
@@ -1330,6 +1343,50 @@
       if (game.planet.hp <= 0 && !game.over) endGame();
     }
 
+    function damagePlayer(amount, atX, atY){
+      const s = game.playerShip;
+      if (!s.alive || s.invTimer > 0) return;
+      // Shield absorbs one hit
+      if (game.buffs.shield > 0){
+        game.buffs.shield = Math.max(0, game.buffs.shield - 1);
+        addFloater('BLOQUEADO!', atX, atY, 'rgba(79,243,255,.95)');
+        for (let k=0;k<8;k++) addParticle(atX, atY, rand(-80,80), rand(-80,80), rand(0.12,0.28), rand(1,2), 'rgba(79,243,255,.6)', 'rgba(79,243,255,.25)');
+        return;
+      }
+      s.hp -= amount;
+      s.invTimer = 0.55; // brief invincibility
+      game.shake.mag = Math.min(14, game.shake.mag + 3);
+      sfxHit();
+      addFloater(`-${Math.floor(amount)}`, s.x, s.y - 10, 'rgba(255,59,92,.95)');
+      for (let k=0;k<10;k++){
+        const ang = rand(0,Math.PI*2);
+        addParticle(s.x, s.y, Math.cos(ang)*rand(60,180), Math.sin(ang)*rand(60,180), rand(0.18,0.45), rand(1.5,3.5), 'rgba(255,59,92,.7)', 'rgba(255,207,90,.3)');
+      }
+      if (s.hp <= 0){
+        // Ship destroyed — respawn with penalty, or game over if planet also low
+        s.hp = 0;
+        addFloater('¡NAVE DESTRUIDA!', s.x, s.y, 'rgba(255,59,92,.95)');
+        sfxExplosion(); sfxExplosion();
+        for (let k=0;k<40;k++){
+          const ang = rand(0,Math.PI*2);
+          addParticle(s.x, s.y, Math.cos(ang)*rand(80,300), Math.sin(ang)*rand(80,300), rand(0.3,0.8), rand(2,5), 'rgba(255,207,90,.8)', 'rgba(255,59,92,.5)');
+        }
+        // Respawn after 2s at planet
+        s.alive = false;
+        game.shake.mag = 20;
+        damagePlanet(30, s.x, s.y); // explosion damages planet
+        setTimeout(() => {
+          if (!game.over){
+            s.x = game.planet.x; s.y = game.planet.y - 120;
+            s.hp = s.hpMax * 0.4;
+            s.alive = true;
+            s.invTimer = 2.0;
+            addFloater('¡RESPAWN!', s.x, s.y - 20, 'rgba(82,255,159,.95)');
+          }
+        }, 2000);
+      }
+    }
+
     function compactArrays(){
       for (let i=asteroids.length-1;i>=0;i--) if (!asteroids[i].alive) asteroids.splice(i,1);
       for (let i=projectiles.length-1;i>=0;i--) if (!projectiles[i].alive) projectiles.splice(i,1);
@@ -1339,32 +1396,52 @@
 
     function applyPowerup(type){
       sfxPowerup();
+      const s = game.playerShip;
       switch(type){
         case 'shield':
-          game.buffs.shield = 3;
-          addFloater('¡ESCUDO! 3 impactos', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.shield);
+          game.buffs.shield = Math.min(5, game.buffs.shield + 2);
+          addFloater(`🛡 ESCUDO x${game.buffs.shield}`, s.x, s.y - 28, POWERUP_COLORS.shield);
           break;
         case 'multishot':
           game.buffs.multiShot = 10;
-          addFloater('¡MULTI-TIRO! 10s', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.multishot);
+          addFloater('✦ MULTI-TIRO 10s', s.x, s.y - 28, POWERUP_COLORS.multishot);
           break;
         case 'speed':
           game.buffs.speedBoost = 10;
-          addFloater('¡VELOCIDAD! 10s', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.speed);
+          addFloater('⚡ VELOCIDAD 10s', s.x, s.y - 28, POWERUP_COLORS.speed);
           break;
         case 'repair':
-          game.planet.hp = Math.min(game.planet.hpMax, game.planet.hp + 25);
-          addFloater('+25 HP', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.repair);
+          // Repairs the planet
+          game.planet.hp = Math.min(game.planet.hpMax, game.planet.hp + 30);
+          addFloater('♥ +30 HP PLANETA', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.repair);
+          break;
+        case 'shipRepair':
+          // Repairs the player ship
+          s.hp = Math.min(s.hpMax, s.hp + s.hpMax * 0.4);
+          addFloater('+ NAVE REPARADA', s.x, s.y - 28, POWERUP_COLORS.shipRepair);
           break;
         case 'damage':
           game.buffs.damageBoost = 10;
-          addFloater('¡DAÑO DOBLE! 10s', game.planet.x, game.planet.y - game.planet.r - 30, POWERUP_COLORS.damage);
+          addFloater('🔥 DAÑO DOBLE 10s', s.x, s.y - 28, POWERUP_COLORS.damage);
+          break;
+        case 'autofire':
+          game.buffs.autofire = 6;
+          addFloater('◎ FUEGO AUTO 6s', s.x, s.y - 28, POWERUP_COLORS.autofire);
+          break;
+        case 'nuke':
+          // Destroy all enemies on screen
+          let nukeCount = 0;
+          for (let i=0;i<asteroids.length;i++){
+            if (asteroids[i].alive){ killEnemy(asteroids[i]); nukeCount++; }
+          }
+          addFloater(`💥 NUKE! ×${nukeCount}`, s.x, s.y - 28, POWERUP_COLORS.nuke);
+          game.shake.mag = 20;
           break;
       }
       for (let k=0;k<16;k++){
         const ang = rand(0, Math.PI*2);
         const sp = rand(40, 160);
-        addParticle(game.planet.x, game.planet.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.2,0.45), rand(1.5,3.0), 'rgba(255,255,255,.65)', 'rgba(79,243,255,.3)');
+        addParticle(s.x, s.y, Math.cos(ang)*sp, Math.sin(ang)*sp, rand(0.2,0.45), rand(1.5,3.0), 'rgba(255,255,255,.65)', 'rgba(79,243,255,.3)');
       }
     }
 
@@ -1405,7 +1482,7 @@
         const cadence = clamp(0.62 - game.wave*0.018 - (game.level-1)*0.006, 0.14, 0.62);
         if (game.waveSpawnTimer <= 0){
           game.waveSpawnTimer = cadence * rand(0.78, 1.22);
-          spawnAsteroid();
+          spawnEnemy();
         }
       } else {
         if (game.waveAlive <= 0){
@@ -1433,6 +1510,7 @@
         // Lógica de temporizadores de Dash
         if (ship.dashCooldown > 0) ship.dashCooldown -= dt;
         if (ship.dashTimer > 0) ship.dashTimer -= dt;
+        if (ship.invTimer > 0) ship.invTimer -= dt;
 
         // Iniciar Dash
         if (keys['space'] && ship.dashCooldown <= 0 && (moveX !== 0 || moveY !== 0)) {
@@ -1480,9 +1558,10 @@
         // Spin decorativo para partículas
         ship.spin = (ship.spin || 0 + dt * 2) % (Math.PI * 2);
 
-        // Disparo Manual
+        // Disparo Manual (click) or Autofire buff
         ship.fireCooldown -= dt;
-        if (game.pointer.down && ship.fireCooldown <= 0){
+        const firing = game.pointer.down || game.buffs.autofire > 0;
+        if (firing && ship.fireCooldown <= 0){
           ship.fireCooldown = ship.fireRate;
           const speed = 520 + ship.level*10;
           const shots = game.buffs.multiShot > 0 ? 3 : 1;
@@ -1521,7 +1600,7 @@
               for (let k=0;k<5;k++){
                 addParticle(p.x, p.y, rand(-80,80), rand(-80,80), rand(0.1,0.25), rand(1,2), 'rgba(79,243,255,.5)', 'rgba(79,243,255,.2)');
               }
-              if (a.hp <= 0) killAsteroid(a);
+              if (a.hp <= 0) killEnemy(a);
               break;
             }
           }
@@ -1547,13 +1626,10 @@
           const dp = hypot(p.x - game.planet.x, p.y - game.planet.y);
           if (dp < game.planet.r + p.r){
             p.alive = false;
-            const shielded = game.buffs.shield > 0;
-            if (shielded){
+            if (game.buffs.shield > 0){
               game.buffs.shield = Math.max(0, game.buffs.shield - 1);
               addFloater('BLOQUEADO!', p.x, p.y, 'rgba(79,243,255,.95)');
-              for (let k=0;k<10;k++){
-                addParticle(p.x, p.y, rand(-100,100), rand(-100,100), rand(0.15,0.3), rand(1,2.2), 'rgba(79,243,255,.6)', 'rgba(79,243,255,.25)');
-              }
+              for (let k=0;k<10;k++) addParticle(p.x, p.y, rand(-100,100), rand(-100,100), rand(0.15,0.3), rand(1,2.2), 'rgba(79,243,255,.6)', 'rgba(79,243,255,.25)');
             } else {
               damagePlanet(p.damage, p.x, p.y);
             }
@@ -1561,60 +1637,127 @@
           // Enemy projectile → hit player ship
           if (p.alive){
             const s = game.playerShip;
-            if (s.alive && hypot(s.x-p.x, s.y-p.y) < s.r + p.r){
+            if (s.alive && s.invTimer <= 0 && hypot(s.x-p.x, s.y-p.y) < s.r + p.r){
               p.alive = false;
-              const shielded = game.buffs.shield > 0;
-              if (shielded){
-                game.buffs.shield = Math.max(0, game.buffs.shield - 1);
-                addFloater('BLOQUEADO!', p.x, p.y, 'rgba(79,243,255,.95)');
-                for (let k=0;k<6;k++) addParticle(p.x, p.y, rand(-60,60), rand(-60,60), rand(0.12,0.28), rand(1,2), 'rgba(79,243,255,.5)', 'rgba(79,243,255,.2)');
-              } else {
-                s.hp -= p.damage * 0.5;
-                for (let k=0;k<6;k++) addParticle(p.x, p.y, rand(-60,60), rand(-60,60), rand(0.12,0.28), rand(1,2), 'rgba(255,79,240,.5)', 'rgba(255,79,240,.2)');
-                if (s.hp <= 0){
-                  addFloater('Nave dañada!', s.x, s.y, 'rgba(255,59,92,.95)');
-                  s.hp = s.hpMax * 0.3;
-                  s.alive = true;
-                  sfxHit();
-                  damagePlanet(15, s.x, s.y);
-                }
-              }
+              damagePlayer(p.damage, p.x, p.y);
             }
           }
         }
       }
 
-      // ---------- Asteroid Update ----------
+      // ---------- Enemy Update ----------
       for (let i=0;i<asteroids.length;i++){
         const a = asteroids[i];
         if (!a.alive) continue;
-        
-        if (a.hitTimer > 0) a.hitTimer -= dt; // <-- Disminuir hit timer
 
-        // Hunter: steer toward player ship
-        if (a.kind === 'hunter' && game.playerShip.alive){
-          const tx = game.playerShip.x - a.x;
-          const ty = game.playerShip.y - a.y;
-          const td = Math.max(1, Math.hypot(tx, ty));
-          const turnForce = 160;
-          a.vx += (tx / td) * turnForce * dt;
-          a.vy += (ty / td) * turnForce * dt;
-          // Speed cap
-          const spd = Math.hypot(a.vx, a.vy);
-          if (spd > 160){ a.vx = (a.vx/spd)*160; a.vy = (a.vy/spd)*160; }
-          // Trail
-          if (Math.random() < 0.4) addTrail(a.x, a.y, a.r * 0.5, 'rgba(255,79,240,.45)');
+        if (a.hitTimer > 0) a.hitTimer -= dt;
+        if (a.invTimer > 0) a.invTimer -= dt;
+
+        // --- AI movement ---
+        const distToPlayer = hypot(game.playerShip.x - a.x, game.playerShip.y - a.y);
+        const distToPlanet = hypot(game.planet.x - a.x, game.planet.y - a.y);
+
+        if (a.kind === 'sniper'){
+          // Snipers keep distance from player and aim carefully
+          const preferDist = 280;
+          const pdx = game.playerShip.x - a.x, pdy = game.playerShip.y - a.y;
+          const pd = Math.max(1, hypot(pdx,pdy));
+          const pullDir = distToPlayer < preferDist ? -1 : 1;
+          a.vx += (pdx/pd) * pullDir * 80 * dt;
+          a.vy += (pdy/pd) * pullDir * 80 * dt;
+        } else if (a.kind === 'scout'){
+          // Scouts circle the player
+          const pdx = game.playerShip.x - a.x, pdy = game.playerShip.y - a.y;
+          const pd = Math.max(1, hypot(pdx,pdy));
+          // tangent strafe + closing
+          a.vx += (pdx/pd * 60 + (-pdy/pd) * 90) * dt;
+          a.vy += (pdy/pd * 60 + (pdx/pd) * 90) * dt;
         } else {
+          // Others: home toward planet, but steer toward player if close
           applyCentralGravity(a, dt);
-          damp(a, dt, 0.06);
+          if (distToPlayer < 300){
+            const pdx = game.playerShip.x - a.x, pdy = game.playerShip.y - a.y;
+            const pd = Math.max(1, hypot(pdx,pdy));
+            a.vx += (pdx/pd) * 60 * dt;
+            a.vy += (pdy/pd) * 60 * dt;
+          }
         }
 
-        integrate(a, dt);
-        a.spin += dt * (0.9 + a.tier*0.2);
+        // Speed cap per kind
+        const maxSpd = { scout:200, fighter:150, tank:90, sniper:130, bomber:110, stealth:170 }[a.kind] || 150;
+        const spd = hypot(a.vx, a.vy);
+        if (spd > maxSpd){ a.vx = (a.vx/spd)*maxSpd; a.vy = (a.vy/spd)*maxSpd; }
 
-        const dx = a.x - game.planet.x, dy = a.y - game.planet.y;
-        const d = hypot(dx,dy);
-        if (d < (game.planet.r + a.r)){
+        // Damp and integrate
+        damp(a, dt, 0.04);
+        integrate(a, dt);
+
+        // Stealth alpha flicker
+        if (a.kind === 'stealth'){
+          a.stealthTimer -= dt;
+          if (a.stealthTimer <= 0){
+            a.stealthVisible = !a.stealthVisible;
+            a.stealthTimer = a.stealthVisible ? rand(1.5, 2.5) : rand(2.0, 3.5);
+          }
+          a.alpha = a.stealthVisible ? lerp(a.alpha, 0.95, dt*4) : lerp(a.alpha, 0.12, dt*3);
+        }
+
+        // Aim toward player
+        const aimDx = game.playerShip.x - a.x, aimDy = game.playerShip.y - a.y;
+        a.angle = Math.atan2(aimDy, aimDx);
+        a.spin = a.angle;
+
+        // --- Enemy shooting ---
+        a.fireCooldown -= dt;
+        if (a.fireCooldown <= 0 && distToPlayer < 500){
+          a.fireCooldown = a.fireRate * rand(0.8, 1.2);
+          const shotSpeed = 200 + game.wave*3;
+          const acc = 0.04 + game.level*0.004; // accuracy improves with level
+
+          const fireAt = (targetX, targetY, speedMul, spread, dmgMul) => {
+            const fdx = targetX - a.x, fdy = targetY - a.y;
+            const fd = Math.max(1, hypot(fdx,fdy));
+            const ang = Math.atan2(fdy, fdx) + rand(-spread, spread);
+            const spd2 = shotSpeed * (speedMul||1);
+            const dmg = (6 + game.wave*1.2 + game.level*0.8) * (dmgMul||1);
+            projectiles.push(makeProjectile(a.x, a.y, Math.cos(ang)*spd2, Math.sin(ang)*spd2, dmg, true, a.level||1));
+          };
+
+          if (a.weapon === 'laser'){
+            fireAt(game.playerShip.x, game.playerShip.y, 1.4, acc, 1.0);
+          } else if (a.weapon === 'burst'){
+            // 2-shot quick burst
+            fireAt(game.playerShip.x, game.playerShip.y, 1.2, acc*1.2, 0.8);
+            setTimeout(() => {
+              if (a.alive) fireAt(game.playerShip.x, game.playerShip.y, 1.2, acc*1.2, 0.8);
+            }, 120);
+          } else if (a.weapon === 'heavy'){
+            // Big slow shot aimed at player, high damage
+            const fdx = game.playerShip.x - a.x, fdy = game.playerShip.y - a.y;
+            const fd = Math.max(1, hypot(fdx,fdy));
+            const ang = Math.atan2(fdy, fdx) + rand(-acc, acc);
+            const dmg = (14 + game.wave*2.5 + game.level*1.5);
+            const p2 = makeProjectile(a.x, a.y, Math.cos(ang)*180, Math.sin(ang)*180, dmg, true, a.level||1);
+            p2.r = 8; // bigger projectile
+            projectiles.push(p2);
+          } else if (a.weapon === 'snipe'){
+            // Ultra-fast long-range, aimed precisely
+            fireAt(game.playerShip.x, game.playerShip.y, 2.2, acc*0.3, 1.4);
+          } else if (a.weapon === 'spread'){
+            // 3-way spread
+            for (let k=-1;k<=1;k++){
+              const fdx2 = game.playerShip.x - a.x, fdy2 = game.playerShip.y - a.y;
+              const ang2 = Math.atan2(fdy2, fdx2) + k*0.28 + rand(-acc, acc);
+              const dmg2 = (8 + game.wave*1.5 + game.level*1.0);
+              projectiles.push(makeProjectile(a.x, a.y, Math.cos(ang2)*shotSpeed, Math.sin(ang2)*shotSpeed, dmg2, true, 1));
+            }
+          }
+        }
+
+        // --- Collision with planet ---
+        const dxP = a.x - game.planet.x, dyP = a.y - game.planet.y;
+        const dP = hypot(dxP,dyP);
+        if (dP < (game.planet.r + a.r)){
           a.alive = false;
           game.waveAlive = Math.max(0, game.waveAlive - 1);
           const shielded = game.buffs.shield > 0;
@@ -1623,10 +1766,25 @@
             addFloater('BLOQUEADO!', a.x, a.y, 'rgba(79,243,255,.95)');
             for (let k=0;k<12;k++) addParticle(a.x, a.y, rand(-100,100), rand(-100,100), rand(0.15,0.3), rand(1,2.2), 'rgba(79,243,255,.6)', 'rgba(79,243,255,.25)');
           } else {
-            const impact = (10 + a.tier*6 + game.wave*0.25 + (game.level-1)*0.8) * (a.impactMul || 1);
+            const impact = (8 + game.wave*0.5 + (game.level-1)*0.6);
             damagePlanet(impact, a.x, a.y);
           }
         }
+
+        // --- Collision with PLAYER ---
+        const s = game.playerShip;
+        if (s.alive && s.invTimer <= 0){
+          const dxS = a.x - s.x, dyS = a.y - s.y;
+          if (hypot(dxS,dyS) < a.r + s.r){
+            // Ram damage
+            const ramDmg = 8 + game.wave*0.4;
+            damagePlayer(ramDmg, a.x, a.y);
+            // Bounce enemy back
+            a.vx = -(dxS/Math.max(1,hypot(dxS,dyS))) * 120;
+            a.vy = -(dyS/Math.max(1,hypot(dxS,dyS))) * 120;
+          }
+        }
+
         if (a.x < -300 || a.x > W+300 || a.y < -300 || a.y > H+300){
           a.alive = false;
           game.waveAlive = Math.max(0, game.waveAlive - 1);
@@ -1638,48 +1796,86 @@
         const b = bosses[i];
         if (!b.alive) continue;
 
-        if (b.hitTimer > 0) b.hitTimer -= dt; // <-- Disminuir hit timer
+        if (b.hitTimer > 0) b.hitTimer -= dt;
 
+        // Enrage at 50% hp
+        if (b.hp < b.hpMax * 0.5 && b.phase === 0){
+          b.phase = 1;
+          b.fireRate *= 0.55;
+          addFloater('¡FURIA!', b.x, b.y - 30, 'rgba(255,59,92,.95)');
+          game.shake.mag = Math.min(18, game.shake.mag + 6);
+        }
+
+        // Move toward planet
         applyCentralGravity(b, dt);
         damp(b, dt, 0.03);
         integrate(b, dt);
-        b.spin += dt * 0.6;
+        b.spin += dt * 0.7;
+        b.spiralAngle += dt * 1.8;
 
-        // Boss shoots at planet and nearest satellite
         b.fireCooldown -= dt;
         if (b.fireCooldown <= 0){
           b.fireCooldown = b.fireRate;
-          // Shoot at planet
-          const dx = game.planet.x - b.x, dy = game.planet.y - b.y;
-          const d = Math.max(1, hypot(dx,dy));
-          const speed = rand(120, 200) + b.wave*2;
-          const ang = Math.atan2(dy, dx) + rand(-0.08, 0.08);
-          const pvx = Math.cos(ang)*speed;
-          const pvy = Math.sin(ang)*speed;
-          const dmg = 8 + b.wave*2 + b.level*1.5;
-          projectiles.push(makeProjectile(b.x, b.y, pvx, pvy, dmg, true, b.level));
+          const s2 = 180 + b.wave*2.5;
+          const dmgBase = 10 + b.wave*2.2 + b.level*1.5;
 
-          // Shoot at player ship
-          const ship = game.playerShip;
-          if (ship.alive){
-            const sdx = ship.x - b.x, sdy = ship.y - b.y;
-            const sd = Math.max(1, hypot(sdx,sdy));
-            if (sd < 500){
-              const sang = Math.atan2(sdy, sdx) + rand(-0.1, 0.1);
-              const spvx = Math.cos(sang)*speed*0.85;
-              const spvy = Math.sin(sang)*speed*0.85;
-              const sdmg = 5 + b.wave*1.5 + b.level;
-              projectiles.push(makeProjectile(b.x, b.y, spvx, spvy, sdmg, true, b.level));
+          if (b.pattern === 'spread'){
+            // 5-way fan toward player
+            const base = Math.atan2(game.playerShip.y - b.y, game.playerShip.x - b.x);
+            const shots = b.phase === 1 ? 7 : 5;
+            for (let k=0;k<shots;k++){
+              const a2 = base + (k - Math.floor(shots/2)) * 0.22;
+              projectiles.push(makeProjectile(b.x, b.y, Math.cos(a2)*s2, Math.sin(a2)*s2, dmgBase, true, b.level));
+            }
+          } else if (b.pattern === 'spiral'){
+            // Rotating spiral
+            const arms = b.phase === 1 ? 4 : 3;
+            for (let k=0;k<arms;k++){
+              const a2 = b.spiralAngle + (k/arms)*Math.PI*2;
+              projectiles.push(makeProjectile(b.x, b.y, Math.cos(a2)*s2*0.9, Math.sin(a2)*s2*0.9, dmgBase*0.8, true, b.level));
+            }
+            b.spiralAngle += 0.25;
+          } else if (b.pattern === 'salvo'){
+            // Aimed salvo at player + planet
+            const targets = [game.playerShip, game.planet];
+            targets.forEach(t => {
+              const dx2 = t.x - b.x, dy2 = t.y - b.y;
+              const d2 = Math.max(1, hypot(dx2,dy2));
+              const a2 = Math.atan2(dy2/d2, dx2/d2) + rand(-0.08, 0.08);
+              projectiles.push(makeProjectile(b.x, b.y, Math.cos(a2)*s2, Math.sin(a2)*s2, dmgBase, true, b.level));
+              if (b.phase === 1){
+                const a3 = a2 + 0.18;
+                projectiles.push(makeProjectile(b.x, b.y, Math.cos(a3)*s2, Math.sin(a3)*s2, dmgBase*0.7, true, b.level));
+              }
+            });
+          } else if (b.pattern === 'snipe'){
+            // Very fast precise shot at player
+            const dx2 = game.playerShip.x - b.x, dy2 = game.playerShip.y - b.y;
+            const d2 = Math.max(1, hypot(dx2,dy2));
+            const a2 = Math.atan2(dy2,dx2) + rand(-0.03, 0.03);
+            const p2 = makeProjectile(b.x, b.y, Math.cos(a2)*s2*2, Math.sin(a2)*s2*2, dmgBase*1.8, true, b.level);
+            p2.r = 4; p2.snipe = true;
+            projectiles.push(p2);
+            if (b.phase === 1){
+              // Also shoot at planet
+              const dx3 = game.planet.x - b.x, dy3 = game.planet.y - b.y;
+              const a3 = Math.atan2(dy3, dx3);
+              projectiles.push(makeProjectile(b.x, b.y, Math.cos(a3)*s2*1.5, Math.sin(a3)*s2*1.5, dmgBase, true, b.level));
             }
           }
         }
 
-        // Boss collision with planet
-        const dx = b.x - game.planet.x, dy = b.y - game.planet.y;
-        const d = hypot(dx,dy);
-        if (d < (game.planet.r + b.r)){
-          damagePlanet(20 + b.wave*3, b.x, b.y);
+        // Collision with planet
+        const dxB = b.x - game.planet.x, dyB = b.y - game.planet.y;
+        if (hypot(dxB,dyB) < (game.planet.r + b.r)){
+          damagePlanet(25 + b.wave*3, b.x, b.y);
           killBoss(b);
+        }
+
+        // Collision with player
+        const sh2 = game.playerShip;
+        if (sh2.alive && sh2.invTimer <= 0 && hypot(b.x-sh2.x, b.y-sh2.y) < b.r + sh2.r){
+          damagePlayer(20 + b.wave, b.x, b.y);
         }
       }
 
@@ -1726,6 +1922,7 @@
       if (game.buffs.multiShot > 0) game.buffs.multiShot -= dt;
       if (game.buffs.speedBoost > 0) game.buffs.speedBoost -= dt;
       if (game.buffs.damageBoost > 0) game.buffs.damageBoost -= dt;
+      if (game.buffs.autofire > 0) game.buffs.autofire -= dt;
 
       compactArrays();
 
@@ -1810,15 +2007,13 @@
       minimapCtx.arc(px, py, Math.max(3, game.planet.r * sx), 0, Math.PI*2);
       minimapCtx.fillStyle = 'rgba(79,243,255,.65)';
       minimapCtx.fill();
-      // Asteroids
-      minimapCtx.fillStyle = 'rgba(160,180,255,.55)';
+      // Enemies
       for (let i=0;i<asteroids.length;i++){
         const a = asteroids[i];
         if (!a.alive) continue;
-        const col = a.kind === 'hunter' ? 'rgba(255,79,240,.85)' : a.kind === 'tank' ? 'rgba(255,207,90,.7)' : 'rgba(160,180,255,.55)';
-        minimapCtx.fillStyle = col;
+        minimapCtx.fillStyle = a.col ? a.col.replace('.95)', '.8)').replace('1)', '.8)') : 'rgba(160,180,255,.7)';
         minimapCtx.beginPath();
-        minimapCtx.arc(a.x*sx, a.y*sy, Math.max(1.5, a.r*sx*0.7), 0, Math.PI*2);
+        minimapCtx.arc(a.x*sx, a.y*sy, Math.max(1.5, a.r*sx*0.8), 0, Math.PI*2);
         minimapCtx.fill();
       }
       // Bosses
@@ -1911,61 +2106,105 @@
       }
       ctx.restore();
 
-      // asteroids
+      // enemy ships
       for (let i=0;i<asteroids.length;i++){
         const a = asteroids[i];
         if (!a.alive) continue;
         const r = a.r;
+        const alpha = a.alpha !== undefined ? a.alpha : 1.0;
         ctx.save();
+        ctx.globalAlpha = alpha;
         ctx.translate(a.x, a.y);
-        ctx.rotate(a.spin);
+        ctx.rotate(a.angle + Math.PI); // face direction of travel
 
-        let edge = 'rgba(255,79,240,.18)';
-        if (a.kind === 'runner') edge = 'rgba(79,243,255,.22)';
-        if (a.kind === 'tank') edge = 'rgba(255,79,240,.26)';
-        if (a.kind === 'splitter') edge = 'rgba(255,207,90,.22)';
-        if (a.kind === 'shard') edge = 'rgba(82,255,159,.18)';
-        if (a.kind === 'hunter') edge = 'rgba(255,60,180,.75)';
+        const col = a.col || 'rgba(79,243,255,1)';
+        const glow = a.glow || col;
 
-        // HIT FLASH RENDER
-        if (a.hitTimer > 0) {
-          ctx.fillStyle = '#ffffff';
-          ctx.shadowColor = '#ffffff';
+        // Engine glow (back)
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = glow.replace('.7)', '.12)').replace('.95)', '.12)');
+        ctx.beginPath(); ctx.arc(-r*0.3, 0, r*1.6, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+
+        if (a.hitTimer > 0){
+          ctx.fillStyle = '#fff';
+          ctx.strokeStyle = '#fff';
+          ctx.shadowColor = '#fff';
         } else {
-          const body = ctx.createRadialGradient(-r*0.25, -r*0.25, r*0.2, 0, 0, r*1.2);
-          body.addColorStop(0, 'rgba(255,255,255,.20)');
-          body.addColorStop(0.55, 'rgba(90,110,160,.35)');
-          body.addColorStop(1, 'rgba(25,30,46,1)');
-          ctx.fillStyle = body;
-          ctx.shadowColor = edge;
+          ctx.fillStyle = 'rgba(8,12,22,.92)';
+          ctx.strokeStyle = col;
+          ctx.shadowColor = glow;
         }
-
-        ctx.strokeStyle = edge;
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.8;
         ctx.shadowBlur = 10;
+
+        // Different silhouettes per kind
         ctx.beginPath();
-        const bumps = 10;
-        for (let k=0;k<=bumps;k++){
-          const ang = (k/bumps) * Math.PI*2;
-          const br = r * (0.86 + 0.22*Math.sin(ang*3 + a.tier) + 0.08*Math.sin(ang*7));
-          const x = Math.cos(ang)*br;
-          const y = Math.sin(ang)*br;
-          if (k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        if (a.kind === 'scout'){
+          // sleek arrowhead
+          ctx.moveTo(r*1.3, 0);
+          ctx.lineTo(-r*0.7, -r*0.7);
+          ctx.lineTo(-r*0.3, 0);
+          ctx.lineTo(-r*0.7, r*0.7);
+        } else if (a.kind === 'fighter'){
+          // wider fighter with wings
+          ctx.moveTo(r*1.2, 0);
+          ctx.lineTo(-r*0.5, -r*1.1);
+          ctx.lineTo(-r*0.8, -r*0.4);
+          ctx.lineTo(-r*0.4, 0);
+          ctx.lineTo(-r*0.8, r*0.4);
+          ctx.lineTo(-r*0.5, r*1.1);
+        } else if (a.kind === 'tank'){
+          // blocky, bulky
+          ctx.moveTo(r*1.1, 0);
+          ctx.lineTo(r*0.4, -r*1.0);
+          ctx.lineTo(-r*1.0, -r*0.8);
+          ctx.lineTo(-r*1.2, 0);
+          ctx.lineTo(-r*1.0, r*0.8);
+          ctx.lineTo(r*0.4, r*1.0);
+        } else if (a.kind === 'sniper'){
+          // long thin needle shape
+          ctx.moveTo(r*2.0, 0);
+          ctx.lineTo(-r*0.3, -r*0.5);
+          ctx.lineTo(-r*0.6, 0);
+          ctx.lineTo(-r*0.3, r*0.5);
+        } else if (a.kind === 'bomber'){
+          // wide delta wing
+          ctx.moveTo(r*1.0, 0);
+          ctx.lineTo(-r*0.2, -r*1.4);
+          ctx.lineTo(-r*1.0, -r*0.5);
+          ctx.lineTo(-r*0.6, 0);
+          ctx.lineTo(-r*1.0, r*0.5);
+          ctx.lineTo(-r*0.2, r*1.4);
+        } else {
+          // stealth — flat diamond
+          ctx.moveTo(r*1.4, 0);
+          ctx.lineTo(0, -r*0.7);
+          ctx.lineTo(-r*1.0, 0);
+          ctx.lineTo(0, r*0.7);
         }
         ctx.closePath();
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.stroke();
 
+        // Cockpit dot
+        ctx.fillStyle = col;
+        ctx.shadowColor = glow;
+        ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.arc(r*0.4, 0, r*0.22, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // HP arc
         const hp = clamp(a.hp/a.hpMax, 0, 1);
-        if (hp < 0.999){
-          ctx.globalAlpha = 0.85;
-          ctx.strokeStyle = 'rgba(79,243,255,.55)';
+        if (hp < 0.98){
+          ctx.globalAlpha = alpha * 0.85;
+          ctx.strokeStyle = hp > 0.4 ? col : 'rgba(255,59,92,.8)';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(0,0,r+4, -Math.PI/2, -Math.PI/2 + hp*Math.PI*2);
+          ctx.arc(0, 0, r + 5, -Math.PI/2, -Math.PI/2 + hp*Math.PI*2);
           ctx.stroke();
-          ctx.globalAlpha = 1;
         }
         ctx.restore();
       }
@@ -1994,17 +2233,18 @@
           ctx.fillStyle = '#ffffff';
           ctx.shadowColor = '#ffffff';
         } else {
+          const bCol = b.col || 'rgba(255,59,92,1)';
           const bGrd = ctx.createRadialGradient(-br*0.3,-br*0.3,br*0.2,0,0,br*1.2);
           bGrd.addColorStop(0, 'rgba(255,255,255,.25)');
-          bGrd.addColorStop(0.5, 'rgba(160,40,60,.35)');
-          bGrd.addColorStop(1, 'rgba(30,10,15,1)');
+          bGrd.addColorStop(0.5, bCol.replace('1)', '.35)').replace('.95)', '.35)'));
+          bGrd.addColorStop(1, 'rgba(10,5,20,1)');
           ctx.fillStyle = bGrd;
-          ctx.shadowColor = 'rgba(255,59,92,.25)';
+          ctx.shadowColor = b.glow || 'rgba(255,59,92,.5)';
         }
 
-        ctx.strokeStyle = 'rgba(255,59,92,.45)';
-        ctx.lineWidth = 2.5;
-        ctx.shadowBlur = 14;
+        ctx.strokeStyle = b.phase === 1 ? 'rgba(255,59,92,.85)' : (b.col || 'rgba(255,59,92,.55)');
+        ctx.lineWidth = b.phase === 1 ? 3.5 : 2.5;
+        ctx.shadowBlur = b.phase === 1 ? 22 : 14;
 
         const bBumps = 8;
         ctx.beginPath();
@@ -2020,28 +2260,29 @@
         ctx.shadowBlur = 0;
         ctx.stroke();
 
-        // Skull-like cross
-        ctx.strokeStyle = 'rgba(255,255,255,.12)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-br*0.6,0); ctx.lineTo(br*0.6,0);
-        ctx.moveTo(0,-br*0.6); ctx.lineTo(0,br*0.6);
-        ctx.stroke();
+        // Boss name label
+        ctx.fillStyle = b.col || 'rgba(255,59,92,.9)';
+        ctx.font = `700 ${Math.max(9, br*0.32)}px ui-sans-serif, system-ui`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.name || 'BOSS', 0, 0);
 
-        // Eye dots
-        ctx.fillStyle = 'rgba(255,59,92,.8)';
-        ctx.shadowColor = 'rgba(255,59,92,.5)';
-        ctx.shadowBlur = 8;
-        ctx.beginPath(); ctx.arc(-br*0.25, -br*0.15, br*0.08, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(br*0.25, -br*0.15, br*0.08, 0, Math.PI*2); ctx.fill();
+        // Enrage indicator
+        if (b.phase === 1){
+          ctx.strokeStyle = 'rgba(255,59,92,.6)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4,5]);
+          ctx.beginPath(); ctx.arc(0, 0, br*1.4, 0, Math.PI*2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
 
         // HP ring
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 0.9;
-        ctx.strokeStyle = hp > 0.3 ? 'rgba(255,207,90,.6)' : 'rgba(255,59,92,.7)';
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = hp > 0.3 ? (b.col || 'rgba(255,207,90,.6)') : 'rgba(255,59,92,.85)';
+        ctx.lineWidth = 3.5;
         ctx.beginPath();
-        ctx.arc(0,0,br+6, -Math.PI/2, -Math.PI/2 + hp*Math.PI*2);
+        ctx.arc(0,0,br+7, -Math.PI/2, -Math.PI/2 + hp*Math.PI*2);
         ctx.stroke();
         ctx.globalAlpha = 1;
         ctx.restore();
@@ -2050,6 +2291,10 @@
       // player ship
       const ship = game.playerShip;
       if (ship.alive){
+        // Invincibility blink
+        if (ship.invTimer > 0 && Math.floor(ship.invTimer * 10) % 2 === 0){
+          // skip draw this frame = blink effect
+        } else {
         // Nose position (tip of the ship triangle in world coords)
         const noseX = ship.x + Math.cos(ship.angle) * ship.r * 1.4;
         const noseY = ship.y + Math.sin(ship.angle) * ship.r * 1.4;
@@ -2134,6 +2379,7 @@
         }
 
         ctx.restore();
+        } // end blink skip
       }
 
       // projectiles
@@ -2180,10 +2426,10 @@
         ctx.fillStyle = 'rgba(10,14,24,.8)';
         ctx.beginPath(); ctx.arc(0, 0, pu.r-2, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#fff';
-        ctx.font = '700 10px ui-sans-serif, system-ui';
+        ctx.font = '13px ui-sans-serif, system-ui';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const label = POWERUP_LABELS[pu.type]?.slice(0,4) || '?';
+        const label = POWERUP_LABELS[pu.type] || '?';
         ctx.fillText(label, 0, 1);
         ctx.restore();
       }
@@ -2275,10 +2521,11 @@
 
       // Buff indicators
       const buffsActive = [];
-      if (game.buffs.shield > 0) buffsActive.push(`ESCUDO:${game.buffs.shield}`);
-      if (game.buffs.multiShot > 0) buffsActive.push(`MULTI:${Math.ceil(game.buffs.multiShot)}s`);
-      if (game.buffs.speedBoost > 0) buffsActive.push(`VEL:${Math.ceil(game.buffs.speedBoost)}s`);
-      if (game.buffs.damageBoost > 0) buffsActive.push(`DAÑO:${Math.ceil(game.buffs.damageBoost)}s`);
+      if (game.buffs.shield > 0) buffsActive.push(`🛡${game.buffs.shield}`);
+      if (game.buffs.multiShot > 0) buffsActive.push(`✦${Math.ceil(game.buffs.multiShot)}s`);
+      if (game.buffs.speedBoost > 0) buffsActive.push(`⚡${Math.ceil(game.buffs.speedBoost)}s`);
+      if (game.buffs.damageBoost > 0) buffsActive.push(`🔥${Math.ceil(game.buffs.damageBoost)}s`);
+      if (game.buffs.autofire > 0) buffsActive.push(`◎${Math.ceil(game.buffs.autofire)}s`);
       if (buffsActive.length > 0){
         ctx.save();
         ctx.shadowBlur = 0;
@@ -2349,6 +2596,7 @@
       game.buffs.speedBoost = 0;
       game.buffs.damageBoost = 0;
       game.buffs.shield = 0;
+      game.buffs.autofire = 0;
       game.evolution = null;
 
       game.level = 1;
@@ -2384,6 +2632,7 @@
       s.hpMax = 100;
       s.dashCooldown = 0;
       s.dashTimer = 0;
+      s.invTimer = 0;
       s.kills = 0;
       s.alive = true;
       game.bestLevel = 1;
