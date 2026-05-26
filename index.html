@@ -386,6 +386,81 @@
       text-shadow: 0 0 28px rgba(255,59,92,.65), 0 0 60px rgba(255,59,92,.25);
     }
     #waveBanner.show { opacity: 1; }
+
+    /* ── Weapon + Ability HUD ── */
+    #combatBar {
+      position: fixed;
+      bottom: max(14px, env(safe-area-inset-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 12;
+      pointer-events: none;
+    }
+    .wep-slot {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 7px 10px 5px;
+      border-radius: 12px;
+      border: 1px solid rgba(120,170,255,.14);
+      background: rgba(5,7,12,.72);
+      backdrop-filter: blur(6px);
+      min-width: 52px;
+      transition: border-color .15s, background .15s;
+    }
+    .wep-slot.active {
+      border-color: rgba(79,243,255,.55);
+      background: rgba(79,243,255,.08);
+      box-shadow: 0 0 14px rgba(79,243,255,.18);
+    }
+    .wep-slot.ability { min-width: 46px; }
+    .wep-slot.ability.ready { border-color: rgba(82,255,159,.55); background: rgba(82,255,159,.07); }
+    .wep-slot.ability.active-ab { border-color: rgba(255,207,90,.7); background: rgba(255,207,90,.1); box-shadow: 0 0 14px rgba(255,207,90,.2); }
+    .wep-icon { font-size: 18px; line-height: 1; }
+    .wep-key  { font-size: 9px; font-weight: 700; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+    .wep-name { font-size: 9px; color: rgba(215,227,255,.7); white-space: nowrap; }
+    .ab-cd {
+      width: 100%; height: 3px; border-radius: 999px;
+      background: rgba(255,255,255,.08);
+      overflow: hidden;
+    }
+    .ab-cd-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, rgba(82,255,159,.9), rgba(79,243,255,.7));
+      transform-origin: left;
+      transition: transform .05s linear;
+    }
+    .wep-ammo {
+      font-size: 9px; color: var(--warn); font-weight: 700;
+      letter-spacing: .05em;
+    }
+
+    /* Upgrade panel */
+    #upgradeOverlay {
+      position: fixed; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      z-index: 110;
+      background: rgba(0,0,0,.72);
+      backdrop-filter: blur(10px);
+      padding: 18px;
+    }
+    #upgradeOverlay.show { display: flex; }
+    .upg-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      padding: 14px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,207,90,.22);
+      background: linear-gradient(180deg, rgba(255,207,90,.09), rgba(255,79,240,.05));
+      color: var(--text);
+      cursor: pointer; font: inherit;
+      transition: border-color .2s, transform .1s;
+      flex: 1 1 0;
+    }
+    .upg-btn:hover { border-color: rgba(255,207,90,.6); transform: translateY(-2px); }
+    .upg-icon { font-size: 26px; }
+    .upg-name { font-size: 13px; font-weight: 900; color: var(--warn); letter-spacing: .06em; }
+    .upg-desc { font-size: 10px; color: var(--muted); text-align: center; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -438,11 +513,60 @@
 
   <div id="waveBanner" aria-live="assertive"></div>
 
+  <!-- Combat bar: weapons + abilities -->
+  <div id="combatBar" aria-hidden="true">
+    <div class="wep-slot ability" id="abSlotQ">
+      <div class="wep-icon">🛡</div>
+      <div class="wep-key">Q</div>
+      <div class="wep-name">Escudo</div>
+      <div class="ab-cd"><div class="ab-cd-fill" id="abQFill"></div></div>
+    </div>
+    <div class="wep-slot" id="wepSlot1">
+      <div class="wep-icon">🔵</div>
+      <div class="wep-key">1</div>
+      <div class="wep-name">Láser</div>
+    </div>
+    <div class="wep-slot" id="wepSlot2">
+      <div class="wep-icon">🚀</div>
+      <div class="wep-key">2</div>
+      <div class="wep-name">Cohete</div>
+      <div class="wep-ammo" id="rocketAmmo">∞</div>
+    </div>
+    <div class="wep-slot" id="wepSlot3">
+      <div class="wep-icon">⚡</div>
+      <div class="wep-key">3</div>
+      <div class="wep-name">Rayo</div>
+      <div class="wep-ammo" id="beamAmmo">100%</div>
+    </div>
+    <div class="wep-slot" id="wepSlot4">
+      <div class="wep-icon">💣</div>
+      <div class="wep-key">4</div>
+      <div class="wep-name">Mina</div>
+      <div class="wep-ammo" id="mineAmmo">3</div>
+    </div>
+    <div class="wep-slot ability" id="abSlotE">
+      <div class="wep-icon">⚡</div>
+      <div class="wep-key">E</div>
+      <div class="wep-name">Sobrecarga</div>
+      <div class="ab-cd"><div class="ab-cd-fill" id="abEFill"></div></div>
+    </div>
+  </div>
+
+  <!-- Upgrade choice overlay -->
+  <div id="upgradeOverlay">
+    <div class="card" style="width:min(640px,100%)">
+      <h2 class="title" style="color:var(--warn);font-size:20px;letter-spacing:.07em">⬆ MEJORA DISPONIBLE</h2>
+      <p class="sub">Elige una mejora permanente para esta partida:</p>
+      <div style="display:flex;gap:10px;margin:10px 0 4px" id="upgradeBtns"></div>
+      <p class="sub" style="font-size:10px;color:var(--muted);margin:6px 0 0">Se desbloquea cada 3 niveles.</p>
+    </div>
+  </div>
+
   <button class="helpBtn" id="helpBtn" type="button" aria-label="Ayuda">?</button>
 
   <div class="hint" id="hint" aria-hidden="true">
     <span class="pill">Orbit Synthesis</span>
-    Mover: <b>WASD / Flechas</b>, <b>ESPACIO</b>: Dash, <b>CLIC</b> para disparar.
+    Mover: <b>WASD</b>, <b>ESPACIO</b>: Dash, <b>CLIC</b>: Disparar · <b>1</b>:Láser <b>2</b>:Cohete <b>3</b>:Rayo <b>4</b>:Mina · <b>Q</b>:Escudo <b>E</b>:Sobrecarga
   </div>
 
   <div class="overlay show" id="overlay" role="dialog" aria-modal="true">
@@ -661,7 +785,12 @@
       beep('triangle', 880, 0.18, 0.07);
     }
 
-    muteBtn.addEventListener('click', () => {
+    function sfxRocket(){ beep('sawtooth', 180, 0.06, 0.07); beep('triangle', 280, 0.04, 0.05); }
+    function sfxBeam(){   beep('sine', 900, 0.025, 0.04);  beep('sine', 1100, 0.02, 0.04); }
+    function sfxMine(){   beep('square', 220, 0.05, 0.06); }
+    function sfxAbility(){ beep('sine', 660, 0.08, 0.12); beep('sine', 880, 0.06, 0.10); beep('sine', 1100, 0.04, 0.08); }
+    function sfxSurge(){   beep('sawtooth', 120, 0.12, 0.06); beep('square', 240, 0.08, 0.10); beep('triangle', 440, 0.06, 0.14); }
+    function sfxUpgrade(){ beep('sine', 440, 0.10, 0.12); beep('sine', 660, 0.08, 0.10); beep('sine', 880, 0.06, 0.08); beep('triangle', 1100, 0.05, 0.06); }
       muted = !muted;
       muteBtn.textContent = `Sonido: ${muted ? 'OFF' : 'ON'}`;
       if (muted && audioCtx){
@@ -674,7 +803,17 @@
     const keys = {};
     window.addEventListener('keydown', (e) => {
       keys[e.key.toLowerCase()] = true;
-      if (e.key === ' ') keys['space'] = true; // <-- DASH
+      if (e.key === ' ') keys['space'] = true;
+
+      // Weapon switch
+      if (e.key === '1') game.activeWeapon = 1;
+      if (e.key === '2') game.activeWeapon = 2;
+      if (e.key === '3') game.activeWeapon = 3;
+      if (e.key === '4') game.activeWeapon = 4;
+
+      // Abilities
+      if (e.key.toLowerCase() === 'q') keys['q'] = true;
+      if (e.key.toLowerCase() === 'e') keys['e'] = true;
       
       if (e.key.toLowerCase() === 's'){
         muted = !muted;
@@ -758,7 +897,29 @@
       bossSpawnWave: 5,
 
       evolution: null,  // null | 'plasma' | 'sniper' | 'guardian'
-      evolutionLevel: 10, // level at which evolution triggers
+      evolutionLevel: 10,
+
+      // ── Weapon system ──
+      activeWeapon: 1,   // 1=laser 2=rocket 3=beam 4=mine
+      weapons: {
+        rocket: { ammo: 5,  maxAmmo: 5,  reloadTimer: 0, reloadTime: 4.0 },
+        beam:   { energy: 100, maxEnergy: 100, drainRate: 38, rechargeRate: 22, active: false },
+        mine:   { ammo: 3,  maxAmmo: 3,  reloadTimer: 0, reloadTime: 8.0 }
+      },
+
+      // ── Active abilities ──
+      abilities: {
+        shield: { cd: 0, maxCd: 8.0,  duration: 3.0,  active: 0 },   // Q
+        surge:  { cd: 0, maxCd: 12.0, duration: 1.5,  active: 0 }    // E – damage burst
+      },
+
+      // ── Permanent upgrades (stacking) ──
+      upg: {
+        laserPierce: 0, rocketSplit: 0, beamWidth: 0,
+        mineChain:   0, dashDmg:     0, critChance: 0,
+        speedUp:     0, regenShield: 0,
+      },
+      upgradeNextLevel: 3, // level at which evolution triggers
 
       buffs: {
         multiShot: 0,
@@ -777,7 +938,8 @@
     const projectiles = [];
     const bosses = [];
     const powerups = [];
-    // Trail system: array of {x,y,col,life,max,sz}
+    const mines = [];      // proximity mines
+    const beamHits = [];   // beam hit sparks
     const trails = [];
 
     // ---------- Planet Types + Score Upgrades ----------
@@ -1072,6 +1234,96 @@
       trails.push({ x, y, sz, col, life: 0.22, max: 0.22 });
     }
 
+    // ---------- Upgrade System ----------
+    const ALL_UPGRADES = [
+      { id:'laserPierce', icon:'🔵', name:'Láser Perforante', desc:'Los láseres atraviesan hasta 2 enemigos' },
+      { id:'rocketSplit',  icon:'🚀', name:'Cohete Triple',    desc:'Los cohetes se dividen en 3 al impactar' },
+      { id:'beamWidth',    icon:'⚡', name:'Rayo Ancho',       desc:'El rayo es 2× más grueso y hace +50% daño' },
+      { id:'mineChain',    icon:'💣', name:'Minas en Cadena',  desc:'Las minas encadenan explosiones cercanas' },
+      { id:'dashDmg',      icon:'💨', name:'Dash Letal',       desc:'El dash daña a los enemigos que atraviesas' },
+      { id:'critChance',   icon:'⭐', name:'Golpe Crítico',    desc:'+25% de probabilidad de daño doble' },
+      { id:'speedUp',      icon:'🟢', name:'Propulsores',      desc:'+20% velocidad de movimiento permanente' },
+      { id:'regenShield',  icon:'🛡', name:'Escudo Pasivo',    desc:'Regenera 1 escudo cada 15 segundos' },
+    ];
+
+    function pickUpgradeChoices(){
+      // Pick 3 random upgrades, prefer un-maxed
+      const shuffled = [...ALL_UPGRADES].sort(() => Math.random() - 0.5);
+      return shuffled.slice(0, 3);
+    }
+
+    function showUpgradePanel(){
+      game.running = false;
+      const choices = pickUpgradeChoices();
+      const container = $('upgradeBtns');
+      container.innerHTML = '';
+      choices.forEach(u => {
+        const btn = document.createElement('button');
+        btn.className = 'upg-btn';
+        const current = game.upg[u.id] || 0;
+        btn.innerHTML = `<span class="upg-icon">${u.icon}</span><span class="upg-name">${u.name}</span><span class="upg-desc">${u.desc}</span><span style="font-size:10px;color:var(--neon);margin-top:2px">Nivel actual: ${current}</span>`;
+        btn.addEventListener('click', () => applyUpgrade(u.id));
+        container.appendChild(btn);
+      });
+      $('upgradeOverlay').classList.add('show');
+      sfxUpgrade();
+    }
+
+    function applyUpgrade(id){
+      game.upg[id] = (game.upg[id] || 0) + 1;
+      $('upgradeOverlay').classList.remove('show');
+      game.running = true;
+      const def = ALL_UPGRADES.find(u => u.id === id);
+      addFloater(`${def?.icon || '⬆'} ${def?.name || id}`, game.playerShip.x, game.playerShip.y - 30, 'rgba(255,207,90,.95)');
+      game.upgradeNextLevel = game.playerShip.level + 3;
+      sfxUpgrade();
+    }
+
+    // ---------- Active Abilities ----------
+    function triggerShieldAbility(){
+      const ab = game.abilities.shield;
+      if (ab.cd > 0) return;
+      ab.active = ab.duration;
+      ab.cd = ab.maxCd;
+      game.buffs.shield = Math.max(game.buffs.shield, 4);
+      addFloater('🛡 ESCUDO ACTIVO', game.playerShip.x, game.playerShip.y - 28, 'rgba(79,243,255,.95)');
+      sfxAbility();
+      for (let k=0;k<20;k++){
+        const ang = rand(0,Math.PI*2);
+        addParticle(game.playerShip.x, game.playerShip.y, Math.cos(ang)*rand(40,120), Math.sin(ang)*rand(40,120), rand(0.2,0.5), rand(1.5,3), 'rgba(79,243,255,.6)', 'rgba(79,243,255,.25)');
+      }
+      game.shake.mag = Math.min(6, game.shake.mag + 1.5);
+    }
+
+    function triggerSurgeAbility(){
+      const ab = game.abilities.surge;
+      if (ab.cd > 0) return;
+      ab.active = ab.duration;
+      ab.cd = ab.maxCd;
+      // Explode: damage all nearby enemies
+      const ship = game.playerShip;
+      const range = 240;
+      let hit = 0;
+      [...asteroids, ...bosses].forEach(e => {
+        if (!e.alive) return;
+        const d = hypot(e.x - ship.x, e.y - ship.y);
+        if (d < range){
+          const dmg = (40 + ship.level*6) * (1 - d/range*0.5);
+          e.hp -= dmg;
+          e.hitTimer = 0.12;
+          hit++;
+          if (e.hp <= 0){ e === bosses.find(b=>b===e) ? killBoss(e) : killEnemy(e); }
+        }
+      });
+      addFloater(`⚡ SOBRECARGA ×${hit}`, ship.x, ship.y - 28, 'rgba(255,207,90,.95)');
+      sfxSurge();
+      game.shake.mag = Math.min(16, game.shake.mag + 5);
+      for (let k=0;k<40;k++){
+        const ang = rand(0,Math.PI*2);
+        addParticle(ship.x, ship.y, Math.cos(ang)*rand(80,320), Math.sin(ang)*rand(80,320), rand(0.25,0.6), rand(1.5,4), 'rgba(255,207,90,.7)', 'rgba(255,59,92,.4)');
+      }
+    }
+
     // ---------- Evolution ----------
     function selectEvolution(type){
       const s = game.playerShip;
@@ -1256,6 +1508,10 @@
           game.running = false;
           $('evolutionOverlay').classList.add('show');
           sfxEvolution();
+        }
+        // Upgrade trigger every 3 levels
+        if (s.level >= game.upgradeNextLevel && game.evolution === null){
+          showUpgradePanel();
         }
       }
     }
@@ -1521,7 +1777,7 @@
 
         if (moveX !== 0 || moveY !== 0) {
           const len = Math.hypot(moveX, moveY);
-          let speed = 320 + (game.buffs.speedBoost > 0 ? 120 : 0);
+          let speed = 320 * (1 + (game.upg.speedUp||0)*0.2) + (game.buffs.speedBoost > 0 ? 120 : 0);
           
           // Multiplicar velocidad si el Dash está activo
           if (ship.dashTimer > 0) {
@@ -1558,24 +1814,136 @@
         // Spin decorativo para partículas
         ship.spin = (ship.spin || 0 + dt * 2) % (Math.PI * 2);
 
-        // Disparo Manual (click) or Autofire buff
+        // ── Ability inputs ──
+        if (keys['q'] && !keys['q_used']){ keys['q_used'] = true; triggerShieldAbility(); }
+        if (!keys['q']) keys['q_used'] = false;
+        if (keys['e'] && !keys['e_used']){ keys['e_used'] = true; triggerSurgeAbility(); }
+        if (!keys['e']) keys['e_used'] = false;
+
+        // ── Tick ability cooldowns & active timers ──
+        const abShield = game.abilities.shield;
+        const abSurge  = game.abilities.surge;
+        if (abShield.active > 0) abShield.active -= dt;
+        if (abShield.cd > 0) abShield.cd -= dt;
+        if (abSurge.active > 0) abSurge.active -= dt;
+        if (abSurge.cd > 0) abSurge.cd -= dt;
+
+        // Regen shield passive upgrade
+        if (game.upg.regenShield > 0 && game.buffs.shield < 5){
+          ship._shieldRegenTimer = (ship._shieldRegenTimer || 0) + dt;
+          if (ship._shieldRegenTimer >= 15 / game.upg.regenShield){
+            ship._shieldRegenTimer = 0;
+            game.buffs.shield = Math.min(5, game.buffs.shield + 1);
+          }
+        }
+
+        // ── Weapon ammo reload ──
+        const wR = game.weapons.rocket;
+        const wB = game.weapons.beam;
+        const wM = game.weapons.mine;
+        if (wR.ammo < wR.maxAmmo){ wR.reloadTimer -= dt; if (wR.reloadTimer <= 0){ wR.ammo++; wR.reloadTimer = wR.reloadTime; } }
+        if (wM.ammo < wM.maxAmmo){ wM.reloadTimer -= dt; if (wM.reloadTimer <= 0){ wM.ammo++; wM.reloadTimer = wM.reloadTime; } }
+        if (!wB.active && wB.energy < wB.maxEnergy) wB.energy = Math.min(wB.maxEnergy, wB.energy + wB.rechargeRate * dt);
+
+        // ── Primary weapon: LASER (1) ──
         ship.fireCooldown -= dt;
         const firing = game.pointer.down || game.buffs.autofire > 0;
-        if (firing && ship.fireCooldown <= 0){
+        const bx = ship.x + Math.cos(ship.angle) * ship.r * 1.4;
+        const by = ship.y + Math.sin(ship.angle) * ship.r * 1.4;
+
+        if (game.activeWeapon === 1 && firing && ship.fireCooldown <= 0){
           ship.fireCooldown = ship.fireRate;
-          const speed = 520 + ship.level*10;
+          const spd = 520 + ship.level*10;
           const shots = game.buffs.multiShot > 0 ? 3 : 1;
-          // Spawn from nose tip so bullets align with aim line
-          const bx = ship.x + Math.cos(ship.angle) * ship.r * 1.4;
-          const by = ship.y + Math.sin(ship.angle) * ship.r * 1.4;
           for (let k=0;k<shots;k++){
             const spread = (k-1) * 0.10;
             const a2 = ship.angle + spread;
-            const dmg = (ship.hitDmg * 0.7) * (game.buffs.damageBoost > 0 ? 2 : 1);
-            projectiles.push(makeProjectile(bx, by, Math.cos(a2)*speed, Math.sin(a2)*speed, dmg, false, ship.level));
+            let dmg = (ship.hitDmg * 0.7) * (game.buffs.damageBoost > 0 ? 2 : 1);
+            if (game.upg.critChance > 0 && Math.random() < game.upg.critChance * 0.2){ dmg *= 2; addFloater('CRÍTICO!', bx, by, 'rgba(255,207,90,.95)'); }
+            const proj = makeProjectile(bx, by, Math.cos(a2)*spd, Math.sin(a2)*spd, dmg, false, ship.level);
+            proj.pierce = game.upg.laserPierce;   // pierce counter
+            proj.col = 'rgba(79,243,255,.9)';
+            projectiles.push(proj);
           }
           sfxLaser(ship.level);
           for (let k=0;k<2;k++) addParticle(bx, by, rand(-20,20), rand(-20,20), rand(0.06,0.12), rand(1,2), 'rgba(79,243,255,.35)', 'rgba(79,243,255,.15)');
+        }
+
+        // ── Secondary weapon: ROCKETS (2) ──
+        else if (game.activeWeapon === 2 && firing && ship.fireCooldown <= 0 && wR.ammo > 0){
+          ship.fireCooldown = ship.fireRate * 1.6;
+          wR.ammo--;
+          if (wR.ammo < wR.maxAmmo && wR.reloadTimer <= 0) wR.reloadTimer = wR.reloadTime;
+          // Homing rocket
+          const spd2 = 340;
+          const proj2 = makeProjectile(bx, by, Math.cos(ship.angle)*spd2, Math.sin(ship.angle)*spd2,
+            (ship.hitDmg * 2.2) * (game.buffs.damageBoost > 0 ? 2 : 1), false, ship.level);
+          proj2.rocket = true;
+          proj2.splitOnImpact = game.upg.rocketSplit > 0;
+          proj2.r = 5;
+          proj2.col = 'rgba(255,130,50,.95)';
+          projectiles.push(proj2);
+          sfxRocket();
+          addTrail(bx, by, 6, 'rgba(255,130,50,.5)');
+        }
+
+        // ── Secondary weapon: BEAM (3) ──
+        else if (game.activeWeapon === 3){
+          wB.active = firing && wB.energy > 0;
+          if (wB.active){
+            wB.energy = Math.max(0, wB.energy - wB.drainRate * dt);
+            // Beam hits every frame along its path
+            const beamLen = 600 + ship.level * 8;
+            const beamW   = wB.maxEnergy > 0 ? (game.upg.beamWidth > 0 ? 14 : 7) : 7;
+            const bdmg    = (ship.hitDmg * 0.08) * (game.upg.beamWidth > 0 ? 1.5 : 1) * (game.buffs.damageBoost > 0 ? 2 : 1);
+            // Check enemies along beam
+            [...asteroids, ...bosses].forEach(en => {
+              if (!en.alive) return;
+              // Point–segment distance
+              const ex = en.x - bx, ey = en.y - by;
+              const cos = Math.cos(ship.angle), sin2 = Math.sin(ship.angle);
+              const proj3 = ex*cos + ey*sin2;
+              if (proj3 < 0 || proj3 > beamLen) return;
+              const perp = Math.abs(-ex*sin2 + ey*cos);
+              if (perp < en.r + beamW * 0.5){
+                en.hp -= bdmg;
+                en.hitTimer = 0.04;
+                beamHits.push({ x: en.x, y: en.y, life: 0.08 });
+                if (en.hp <= 0){ bosses.includes(en) ? killBoss(en) : killEnemy(en); }
+              }
+            });
+            if (Math.random() < 0.4) sfxBeam();
+          }
+        }
+
+        // ── Secondary weapon: MINES (4) ──
+        else if (game.activeWeapon === 4 && firing && ship.fireCooldown <= 0 && wM.ammo > 0){
+          ship.fireCooldown = 0.6;
+          wM.ammo--;
+          if (wM.ammo < wM.maxAmmo && wM.reloadTimer <= 0) wM.reloadTimer = wM.reloadTime;
+          mines.push({
+            x: ship.x, y: ship.y,
+            vx: rand(-20,20), vy: rand(-20,20),
+            r: 8, life: 12,
+            dmg: ship.hitDmg * 3.5 * (game.buffs.damageBoost > 0 ? 2 : 1),
+            chain: game.upg.mineChain > 0,
+            arm: 0.8,  // arming delay
+            alive: true
+          });
+          sfxMine();
+          addFloater('💣', ship.x, ship.y - 14, 'rgba(255,207,90,.9)');
+        }
+
+        // ── Dash damage upgrade ──
+        if (ship.dashTimer > 0 && game.upg.dashDmg > 0){
+          [...asteroids, ...bosses].forEach(en => {
+            if (!en.alive) return;
+            if (hypot(en.x - ship.x, en.y - ship.y) < en.r + ship.r + 8){
+              en.hp -= ship.hitDmg * 0.8 * game.upg.dashDmg;
+              en.hitTimer = 0.08;
+              if (en.hp <= 0){ bosses.includes(en) ? killBoss(en) : killEnemy(en); }
+            }
+          });
         }
       }
 
@@ -1589,19 +1957,51 @@
         if (p.life <= 0 || p.x < -50 || p.x > W+50 || p.y < -50 || p.y > H+50){ p.alive = false; continue; }
 
         if (!p.isEnemy){
-          // Friendly projectile → hit asteroids
+          // Rocket homing
+          if (p.rocket){
+            // Find nearest enemy and home toward it
+            let nearest = null, nearDist = 9999;
+            [...asteroids, ...bosses].forEach(en => {
+              if (!en.alive) return;
+              const d2 = hypot(en.x-p.x, en.y-p.y);
+              if (d2 < nearDist){ nearDist = d2; nearest = en; }
+            });
+            if (nearest){
+              const tdx = nearest.x - p.x, tdy = nearest.y - p.y;
+              const td = Math.max(1, hypot(tdx,tdy));
+              const turnSpeed = 280;
+              p.vx += (tdx/td) * turnSpeed * dt;
+              p.vy += (tdy/td) * turnSpeed * dt;
+              // Cap speed
+              const pspd = hypot(p.vx, p.vy);
+              if (pspd > 400){ p.vx=(p.vx/pspd)*400; p.vy=(p.vy/pspd)*400; }
+            }
+            // rocket trail
+            if (Math.random() < 0.6) addTrail(p.x, p.y, rand(3,6), 'rgba(255,130,50,.45)');
+          }
+
+          // Friendly projectile → hit enemies
+          let hitSomething = false;
           for (let j=0;j<asteroids.length;j++){
             const a = asteroids[j];
             if (!a.alive) continue;
             if (hypot(a.x-p.x, a.y-p.y) < a.r + p.r){
               a.hp -= p.damage;
-              a.hitTimer = 0.08; // <-- Hit Flash
-              p.alive = false;
-              for (let k=0;k<5;k++){
-                addParticle(p.x, p.y, rand(-80,80), rand(-80,80), rand(0.1,0.25), rand(1,2), 'rgba(79,243,255,.5)', 'rgba(79,243,255,.2)');
-              }
+              a.hitTimer = 0.08;
+              for (let k=0;k<5;k++) addParticle(p.x, p.y, rand(-80,80), rand(-80,80), rand(0.1,0.25), rand(1,2), p.col||'rgba(79,243,255,.5)', 'rgba(79,243,255,.2)');
               if (a.hp <= 0) killEnemy(a);
-              break;
+              if (p.rocket && p.splitOnImpact){
+                // Split into 3
+                for (let s3=0;s3<3;s3++){
+                  const sang = ship.angle + (s3-1)*0.35;
+                  const sp3 = makeProjectile(p.x, p.y, Math.cos(sang)*320, Math.sin(sang)*320, p.damage*0.5, false, p.lvl);
+                  sp3.col = 'rgba(255,207,90,.9)'; sp3.r = 3;
+                  projectiles.push(sp3);
+                }
+              }
+              if (p.pierce > 0){ p.pierce--; hitSomething = false; } // pierce continues
+              else { p.alive = false; hitSomething = true; }
+              if (hitSomething) break;
             }
           }
           // Friendly projectile → hit boss
@@ -1611,11 +2011,9 @@
               if (!b.alive) continue;
               if (hypot(b.x-p.x, b.y-p.y) < b.r + p.r){
                 b.hp -= p.damage;
-                b.hitTimer = 0.08; // <-- Hit Flash
+                b.hitTimer = 0.08;
                 p.alive = false;
-                for (let k=0;k<8;k++){
-                  addParticle(p.x, p.y, rand(-100,100), rand(-100,100), rand(0.12,0.3), rand(1.2,2.5), 'rgba(255,207,90,.6)', 'rgba(255,207,90,.25)');
-                }
+                for (let k=0;k<8;k++) addParticle(p.x, p.y, rand(-100,100), rand(-100,100), rand(0.12,0.3), rand(1.2,2.5), 'rgba(255,207,90,.6)', 'rgba(255,207,90,.25)');
                 if (b.hp <= 0) killBoss(b);
                 break;
               }
@@ -1924,6 +2322,51 @@
       if (game.buffs.damageBoost > 0) game.buffs.damageBoost -= dt;
       if (game.buffs.autofire > 0) game.buffs.autofire -= dt;
 
+      // ── Mine Update ──
+      for (let i=mines.length-1;i>=0;i--){
+        const m = mines[i];
+        if (!m.alive){ mines.splice(i,1); continue; }
+        m.life -= dt;
+        m.arm -= dt;
+        m.vx *= Math.exp(-1.5*dt); m.vy *= Math.exp(-1.5*dt);
+        m.x += m.vx*dt; m.y += m.vy*dt;
+        if (m.life <= 0){ m.alive = false; continue; }
+        if (m.arm > 0) continue;
+        // Proximity check
+        const trigger = [...asteroids, ...bosses].find(en => en.alive && hypot(en.x-m.x, en.y-m.y) < en.r + 40);
+        if (trigger){
+          m.alive = false;
+          const blastR = 90;
+          [...asteroids, ...bosses].forEach(en => {
+            if (!en.alive) return;
+            const d2 = hypot(en.x-m.x, en.y-m.y);
+            if (d2 < blastR + en.r){
+              const falloff = 1 - d2/(blastR+en.r);
+              en.hp -= m.dmg * falloff;
+              en.hitTimer = 0.12;
+              if (en.hp <= 0){ bosses.includes(en) ? killBoss(en) : killEnemy(en); }
+            }
+          });
+          sfxExplosion(); sfxExplosion();
+          game.shake.mag = Math.min(12, game.shake.mag + 3);
+          for (let k=0;k<30;k++){
+            const ang = rand(0,Math.PI*2);
+            addParticle(m.x, m.y, Math.cos(ang)*rand(80,280), Math.sin(ang)*rand(80,280), rand(0.3,0.7), rand(2,4.5), 'rgba(255,207,90,.8)', 'rgba(255,59,92,.5)');
+          }
+          // Chain explosion
+          if (m.chain){
+            const nearby = mines.filter(m2 => m2.alive && m2 !== m && hypot(m2.x-m.x, m2.y-m.y) < 150);
+            nearby.forEach(m2 => { m2.arm = -0.01; m2.life = 0.1; });
+          }
+        }
+      }
+
+      // ── BeamHit sparks decay ──
+      for (let i=beamHits.length-1;i>=0;i--){
+        beamHits[i].life -= dt;
+        if (beamHits[i].life <= 0) beamHits.splice(i,1);
+      }
+
       compactArrays();
 
       for (let i=particles.length-1;i>=0;i--){
@@ -1988,6 +2431,37 @@
           dashCdTxtEl.textContent = 'DASH ✓';
           dashCdTxtEl.style.color = 'var(--warn)';
         }
+      }
+
+      // ── Weapon + Ability HUD ──
+      const wSlots = [1,2,3,4];
+      wSlots.forEach(n => {
+        const el = $(`wepSlot${n}`);
+        if (el) el.classList.toggle('active', game.activeWeapon === n);
+      });
+      const raEl = $('rocketAmmo');
+      if (raEl) raEl.textContent = `${game.weapons.rocket.ammo}/${game.weapons.rocket.maxAmmo}${game.weapons.rocket.reloadTimer > 0 ? ' ↺' : ''}`;
+      const baEl = $('beamAmmo');
+      if (baEl){ const pct = Math.round(game.weapons.beam.energy/game.weapons.beam.maxEnergy*100); baEl.textContent = `${pct}%${pct < 100 ? ' ↺' : ''}`; }
+      const maEl = $('mineAmmo');
+      if (maEl) maEl.textContent = `${game.weapons.mine.ammo}/${game.weapons.mine.maxAmmo}${game.weapons.mine.reloadTimer > 0 ? ' ↺' : ''}`;
+
+      // Ability cooldown fills
+      const qFill = $('abQFill');
+      if (qFill){
+        const abQ = game.abilities.shield;
+        const pct2 = abQ.cd > 0 ? 1 - abQ.cd/abQ.maxCd : 1;
+        qFill.style.transform = `scaleX(${clamp(pct2,0,1)})`;
+        const qSlot = $('abSlotQ');
+        if (qSlot){ qSlot.classList.toggle('ready', abQ.cd <= 0); qSlot.classList.toggle('active-ab', abQ.active > 0); }
+      }
+      const eFill = $('abEFill');
+      if (eFill){
+        const abE = game.abilities.surge;
+        const pct3 = abE.cd > 0 ? 1 - abE.cd/abE.maxCd : 1;
+        eFill.style.transform = `scaleX(${clamp(pct3,0,1)})`;
+        const eSlot = $('abSlotE');
+        if (eSlot){ eSlot.classList.toggle('ready', abE.cd <= 0); eSlot.classList.toggle('active-ab', abE.active > 0); }
       }
 
       // Draw minimap
@@ -2288,6 +2762,90 @@
         ctx.restore();
       }
 
+      // ── Beam weapon draw ──
+      const wBeam = game.weapons.beam;
+      if (game.activeWeapon === 3 && wBeam.active && game.playerShip.alive){
+        const ship2 = game.playerShip;
+        const bxD = ship2.x + Math.cos(ship2.angle) * ship2.r * 1.4;
+        const byD = ship2.y + Math.sin(ship2.angle) * ship2.r * 1.4;
+        const bLen = 600 + ship2.level*8;
+        const beamW2 = game.upg.beamWidth > 0 ? 10 : 5;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        // Outer glow
+        ctx.strokeStyle = `rgba(200,255,255,${0.12 + Math.random()*0.06})`;
+        ctx.lineWidth = beamW2 * 3.5;
+        ctx.shadowColor = 'rgba(79,243,255,.6)';
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.moveTo(bxD, byD);
+        ctx.lineTo(bxD + Math.cos(ship2.angle)*bLen, byD + Math.sin(ship2.angle)*bLen);
+        ctx.stroke();
+        // Core beam
+        ctx.strokeStyle = `rgba(220,255,255,${0.85 + Math.random()*0.15})`;
+        ctx.lineWidth = beamW2 * 0.7;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(bxD, byD);
+        ctx.lineTo(bxD + Math.cos(ship2.angle)*bLen, byD + Math.sin(ship2.angle)*bLen);
+        ctx.stroke();
+        ctx.restore();
+        // Beam hit sparks
+        beamHits.forEach(bh => {
+          for (let k=0;k<2;k++) addParticle(bh.x+rand(-8,8), bh.y+rand(-8,8), rand(-60,60), rand(-60,60), rand(0.05,0.12), rand(1,2), 'rgba(200,255,255,.7)', 'rgba(79,243,255,.3)');
+        });
+      }
+
+      // ── Mine draw ──
+      ctx.save();
+      for (let i=0;i<mines.length;i++){
+        const m = mines[i];
+        if (!m.alive) continue;
+        const armed = m.arm <= 0;
+        const pulse = armed ? (Math.sin(game.t * 8) * 0.5 + 0.5) : 0.2;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(255,207,90,${0.12 + pulse*0.08})`;
+        ctx.strokeStyle = `rgba(255,207,90,${0.55 + pulse*0.4})`;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = 'rgba(255,207,90,.6)';
+        ctx.shadowBlur = armed ? 10 + pulse*8 : 4;
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = `rgba(255,207,90,${0.5 + pulse*0.5})`;
+        ctx.beginPath(); ctx.arc(m.x, m.y, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+
+      // ── Surge ability ring draw ──
+      if (game.abilities.surge.active > 0){
+        const s3 = game.playerShip;
+        const prog = 1 - game.abilities.surge.active / game.abilities.surge.duration;
+        const ring = 240 * prog;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(255,207,90,${0.6 * (1-prog)})`;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = 'rgba(255,207,90,.5)';
+        ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.arc(s3.x, s3.y, ring, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── Shield ability ring draw ──
+      if (game.abilities.shield.active > 0){
+        const s3 = game.playerShip;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const alpha2 = (game.abilities.shield.active / game.abilities.shield.duration) * 0.35;
+        ctx.strokeStyle = `rgba(79,243,255,${alpha2 + 0.1 + Math.sin(game.t*8)*0.05})`;
+        ctx.lineWidth = 5;
+        ctx.shadowColor = 'rgba(79,243,255,.5)';
+        ctx.shadowBlur = 18;
+        ctx.beginPath(); ctx.arc(s3.x, s3.y, s3.r + 18, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+
       // player ship
       const ship = game.playerShip;
       if (ship.alive){
@@ -2582,6 +3140,8 @@
       projectiles.length = 0;
       bosses.length = 0;
       powerups.length = 0;
+      mines.length = 0;
+      beamHits.length = 0;
 
       game.t = 0;
       game.score = 0;
@@ -2598,6 +3158,21 @@
       game.buffs.shield = 0;
       game.buffs.autofire = 0;
       game.evolution = null;
+      game.activeWeapon = 1;
+      game.upgradeNextLevel = 3;
+
+      // Reset weapons
+      const w = game.weapons;
+      w.rocket.ammo = w.rocket.maxAmmo; w.rocket.reloadTimer = 0;
+      w.beam.energy = w.beam.maxEnergy; w.beam.active = false;
+      w.mine.ammo = w.mine.maxAmmo;     w.mine.reloadTimer = 0;
+
+      // Reset abilities
+      game.abilities.shield.cd = 0; game.abilities.shield.active = 0;
+      game.abilities.surge.cd = 0;  game.abilities.surge.active = 0;
+
+      // Reset upgrades
+      Object.keys(game.upg).forEach(k => game.upg[k] = 0);
 
       game.level = 1;
       game.levelTimer = 0;
