@@ -866,7 +866,7 @@
 
       planet: {
         x:0, y:0, r:44,
-        hp:100, hpMax:100,
+        hp:500, hpMax:500,
         pulse:0,
         type: null,
         upgradesTier: 0,
@@ -1358,9 +1358,10 @@
       game.wave = w;
       game.waveSpawned = 0;
       game.waveAlive = 0;
-      const count = Math.floor(6 + w*1.6 + (game.level-1)*0.9);
-      game.waveToSpawn = clamp(count, 6, 42);
-      game.waveSpawnTimer = 0;
+      // Wave 1 = 4 enemies, grows steadily. Cap at 35.
+      const count = Math.floor(4 + w * 1.2 + (game.level - 1) * 0.6);
+      game.waveToSpawn = clamp(count, 4, 35);
+      game.waveSpawnTimer = 1.2;  // initial delay before first spawn
       game.waveClearGrace = 0;
       waveEl.textContent = String(game.wave);
       addFloater(`OLEADA ${game.wave}`, game.planet.x, game.planet.y - game.planet.r - 42, 'rgba(79,243,255,.95)');
@@ -1392,19 +1393,21 @@
     function spawnEnemy(){
       const lvl = game.level;
       const w = game.wave;
-      // Available kinds based on level
+      // Available kinds unlock progressively
       const pool = ['scout'];
-      if (lvl >= 2) pool.push('fighter');
-      if (lvl >= 3) pool.push('tank');
-      if (lvl >= 4) pool.push('sniper');
-      if (lvl >= 5) pool.push('bomber');
-      if (lvl >= 7) pool.push('stealth');
-      // Weight toward higher-tier enemies as level grows
-      const weights = pool.map((_,i) => Math.pow(1.5, i));
-      const totalW = weights.reduce((a,b)=>a+b,0);
-      let rng = Math.random()*totalW;
+      if (lvl >= 2 || w >= 4)  pool.push('fighter');
+      if (lvl >= 3 || w >= 8)  pool.push('tank');
+      if (lvl >= 4 || w >= 12) pool.push('sniper');
+      if (lvl >= 5 || w >= 16) pool.push('bomber');
+      if (lvl >= 7 || w >= 22) pool.push('stealth');
+
+      // Weights: scouts stay common, harder types are rare early
+      // Weight for index i = 1 / (i+1)^1.5  → scouts ~55%, fighters ~20%, tank ~10%...
+      const weights = pool.map((_, i) => 1 / Math.pow(i + 1, 1.5));
+      const totalW = weights.reduce((a, b) => a + b, 0);
+      let rng = Math.random() * totalW;
       let kind = pool[0];
-      for (let i=0;i<pool.length;i++){
+      for (let i = 0; i < pool.length; i++){
         rng -= weights[i];
         if (rng <= 0){ kind = pool[i]; break; }
       }
@@ -1737,9 +1740,10 @@
 
       if (game.waveSpawned < game.waveToSpawn){
         game.waveSpawnTimer -= dt;
-        const cadence = clamp(0.62 - game.wave*0.018 - (game.level-1)*0.006, 0.14, 0.62);
+        // Cadence: 2s early, eases to ~1.2s at wave 10, ~0.8s at wave 20+
+        const cadence = clamp(2.0 - game.wave * 0.06 - (game.level - 1) * 0.03, 0.8, 2.0);
         if (game.waveSpawnTimer <= 0){
-          game.waveSpawnTimer = cadence * rand(0.78, 1.22);
+          game.waveSpawnTimer = cadence * rand(0.85, 1.15);
           spawnEnemy();
         }
       } else {
@@ -1850,8 +1854,14 @@
         // ── Primary weapon: LASER (1) ──
         ship.fireCooldown -= dt;
         const firing = game.pointer.down || game.buffs.autofire > 0;
-        const bx = ship.x + Math.cos(ship.angle) * ship.r * 1.4;
-        const by = ship.y + Math.sin(ship.angle) * ship.r * 1.4;
+
+        // Exact aim angle toward cursor (not ship.angle which can lag one frame)
+        const aimDx = game.pointer.x - ship.x;
+        const aimDy = game.pointer.y - ship.y;
+        const aimAngle = Math.atan2(aimDy, aimDx);
+        // Nose position uses aimAngle so it matches the aim line perfectly
+        const bx = ship.x + Math.cos(aimAngle) * ship.r * 1.4;
+        const by = ship.y + Math.sin(aimAngle) * ship.r * 1.4;
 
         if (game.activeWeapon === 1 && firing && ship.fireCooldown <= 0){
           ship.fireCooldown = ship.fireRate;
@@ -1859,7 +1869,7 @@
           const shots = game.buffs.multiShot > 0 ? 3 : 1;
           for (let k=0;k<shots;k++){
             const spread = (k-1) * 0.10;
-            const a2 = ship.angle + spread;
+            const a2 = aimAngle + spread;
             let dmg = (ship.hitDmg * 0.7) * (game.buffs.damageBoost > 0 ? 2 : 1);
             if (game.upg.critChance > 0 && Math.random() < game.upg.critChance * 0.2){ dmg *= 2; addFloater('CRÍTICO!', bx, by, 'rgba(255,207,90,.95)'); }
             const proj = makeProjectile(bx, by, Math.cos(a2)*spd, Math.sin(a2)*spd, dmg, false, ship.level);
@@ -1878,7 +1888,7 @@
           if (wR.ammo < wR.maxAmmo && wR.reloadTimer <= 0) wR.reloadTimer = wR.reloadTime;
           // Homing rocket
           const spd2 = 340;
-          const proj2 = makeProjectile(bx, by, Math.cos(ship.angle)*spd2, Math.sin(ship.angle)*spd2,
+          const proj2 = makeProjectile(bx, by, Math.cos(aimAngle)*spd2, Math.sin(aimAngle)*spd2,
             (ship.hitDmg * 2.2) * (game.buffs.damageBoost > 0 ? 2 : 1), false, ship.level);
           proj2.rocket = true;
           proj2.splitOnImpact = game.upg.rocketSplit > 0;
@@ -2855,9 +2865,12 @@
         if (ship.invTimer > 0 && Math.floor(ship.invTimer * 10) % 2 === 0){
           // skip draw this frame = blink effect
         } else {
-        // Nose position (tip of the ship triangle in world coords)
-        const noseX = ship.x + Math.cos(ship.angle) * ship.r * 1.4;
-        const noseY = ship.y + Math.sin(ship.angle) * ship.r * 1.4;
+        // Nose position — recomputed from live pointer for perfect alignment with bullets
+        const _aimDx = game.pointer.x - ship.x;
+        const _aimDy = game.pointer.y - ship.y;
+        const _aimAng = Math.atan2(_aimDy, _aimDx);
+        const noseX = ship.x + Math.cos(_aimAng) * ship.r * 1.4;
+        const noseY = ship.y + Math.sin(_aimAng) * ship.r * 1.4;
 
         // aim line — starts from nose, goes toward cursor
         const aimCol = glowForLevel(ship.level);
@@ -3189,8 +3202,8 @@
       game.planet.upgrades.regenBonus = 0;
       game.planet.upgrades.satAura = 0;
       game.planet.type = planetTypeForLevel(game.level);
-      game.planet.hpMax = 100;
-      game.planet.hp = 100;
+      game.planet.hpMax = 500;
+      game.planet.hp = 500;
       game.planet.pulse = 0;
 
       applyPlanetType();
