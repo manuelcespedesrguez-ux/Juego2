@@ -1497,10 +1497,15 @@
         s.xpToNext = 7 + s.level*4;
         s.hitDmg = 10 + (s.level-1)*5.5;
         s.fireRate = Math.max(0.08, 0.18 - s.level*0.008);
-        s.hpMax = 100 + (s.level-1)*15;
-        s.hp = Math.min(s.hpMax, s.hp + 20);
+        s.hpMax = 100 + (s.level - 1) * 20;   // +20 max HP per level
+        s.hp = s.hpMax;                          // full heal on level-up
+        // Nave Madre also gains max HP and heals a chunk
+        const planetGain = 30;
+        game.planet.hpMax += planetGain;
+        game.planet.hp = Math.min(game.planet.hpMax, game.planet.hp + planetGain);
         game.bestLevel = Math.max(game.bestLevel, s.level);
-        addFloater(`NIVEL ${s.level}!`, s.x, s.y - 18, glowForLevel(s.level));
+        addFloater(`NIVEL ${s.level}! +HP`, s.x, s.y - 18, glowForLevel(s.level));
+        addFloater(`+${planetGain} HP MADRE`, game.planet.x, game.planet.y - game.planet.r - 28, 'rgba(82,255,159,.95)');
         sfxFusion(s.level);
         game.shake.mag = Math.min(12, game.shake.mag + 1.5);
         for (let k=0;k<18;k++){
