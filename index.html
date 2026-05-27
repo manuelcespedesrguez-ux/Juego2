@@ -387,54 +387,24 @@
     }
     #waveBanner.show { opacity: 1; }
 
-    /* ── Weapon + Ability HUD ── */
-    #combatBar {
-      position: fixed;
-      bottom: max(14px, env(safe-area-inset-bottom));
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      z-index: 12;
-      pointer-events: none;
+    /* Active weapon mini-slots in HUD */
+    .aw-slot {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 7px 3px 5px;
+      border-radius: 8px;
+      border: 1px solid rgba(79,243,255,.22);
+      background: rgba(79,243,255,.07);
+      font-size: 11px; font-weight: 700;
+      color: rgba(215,227,255,.9);
+      white-space: nowrap;
     }
-    .wep-slot {
-      display: flex; flex-direction: column; align-items: center; gap: 3px;
-      padding: 7px 10px 5px;
-      border-radius: 12px;
-      border: 1px solid rgba(120,170,255,.14);
-      background: rgba(5,7,12,.72);
-      backdrop-filter: blur(6px);
-      min-width: 52px;
-      transition: border-color .15s, background .15s;
-    }
-    .wep-slot.active {
-      border-color: rgba(79,243,255,.55);
-      background: rgba(79,243,255,.08);
-      box-shadow: 0 0 14px rgba(79,243,255,.18);
-    }
-    .wep-slot.ability { min-width: 46px; }
-    .wep-slot.ability.ready { border-color: rgba(82,255,159,.55); background: rgba(82,255,159,.07); }
-    .wep-slot.ability.active-ab { border-color: rgba(255,207,90,.7); background: rgba(255,207,90,.1); box-shadow: 0 0 14px rgba(255,207,90,.2); }
-    .wep-icon { font-size: 18px; line-height: 1; }
-    .wep-key  { font-size: 9px; font-weight: 700; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
-    .wep-name { font-size: 9px; color: rgba(215,227,255,.7); white-space: nowrap; }
-    .ab-cd {
-      width: 100%; height: 3px; border-radius: 999px;
-      background: rgba(255,255,255,.08);
-      overflow: hidden;
-    }
-    .ab-cd-fill {
-      height: 100%; border-radius: 999px;
-      background: linear-gradient(90deg, rgba(82,255,159,.9), rgba(79,243,255,.7));
-      transform-origin: left;
-      transition: transform .05s linear;
-    }
-    .wep-ammo {
-      font-size: 9px; color: var(--warn); font-weight: 700;
-      letter-spacing: .05em;
-    }
+    .aw-slot.laser  { border-color: rgba(79,243,255,.35); background: rgba(79,243,255,.10); }
+    .aw-slot.rocket { border-color: rgba(255,130,50,.35); background: rgba(255,130,50,.10); }
+    .aw-slot.beam   { border-color: rgba(82,255,159,.35); background: rgba(82,255,159,.08); }
+    .aw-slot.mine   { border-color: rgba(255,207,90,.35); background: rgba(255,207,90,.08); }
+    .aw-slot.shield-ab { border-color: rgba(79,243,255,.35); background: rgba(79,243,255,.08); }
+    .aw-slot.surge  { border-color: rgba(255,207,90,.35); background: rgba(255,207,90,.08); }
+    .aw-ammo { color: var(--warn); font-size: 10px; font-weight: 700; }
 
     /* Upgrade panel */
     #upgradeOverlay {
@@ -504,6 +474,10 @@
         <div class="hpLabel"><span id="shipHpTxt">100%</span></div>
         <div class="hpLabel" style="color:var(--warn);white-space:nowrap;font-size:10px;font-weight:700;" id="dashCdTxt">DASH ✓</div>
       </div>
+      <div class="shipHpWrap" id="activeWeaponsWrap" style="grid-column:1/-1;gap:6px;flex-wrap:wrap;min-height:32px;">
+        <div class="hpLabel" style="color:var(--warn);white-space:nowrap;">⚔</div>
+        <div id="activeWeaponsSlots" style="display:flex;gap:5px;flex-wrap:wrap;flex:1;align-items:center;"></div>
+      </div>
     </div>
   </div>
 
@@ -513,44 +487,18 @@
 
   <div id="waveBanner" aria-live="assertive"></div>
 
-  <!-- Combat bar: weapons + abilities -->
-  <div id="combatBar" aria-hidden="true">
-    <div class="wep-slot ability" id="abSlotQ">
-      <div class="wep-icon">🛡</div>
-      <div class="wep-key">Q</div>
-      <div class="wep-name">Escudo</div>
-      <div class="ab-cd"><div class="ab-cd-fill" id="abQFill"></div></div>
-    </div>
-    <div class="wep-slot" id="wepSlot1">
-      <div class="wep-icon">🔵</div>
-      <div class="wep-key">1</div>
-      <div class="wep-name">Láser</div>
-    </div>
-    <div class="wep-slot" id="wepSlot2">
-      <div class="wep-icon">🚀</div>
-      <div class="wep-key">2</div>
-      <div class="wep-name">Cohete</div>
-      <div class="wep-ammo" id="rocketAmmo">∞</div>
-    </div>
-    <div class="wep-slot" id="wepSlot3">
-      <div class="wep-icon">⚡</div>
-      <div class="wep-key">3</div>
-      <div class="wep-name">Rayo</div>
-      <div class="wep-ammo" id="beamAmmo">100%</div>
-    </div>
-    <div class="wep-slot" id="wepSlot4">
-      <div class="wep-icon">💣</div>
-      <div class="wep-key">4</div>
-      <div class="wep-name">Mina</div>
-      <div class="wep-ammo" id="mineAmmo">3</div>
-    </div>
-    <div class="wep-slot ability" id="abSlotE">
-      <div class="wep-icon">⚡</div>
-      <div class="wep-key">E</div>
-      <div class="wep-name">Sobrecarga</div>
-      <div class="ab-cd"><div class="ab-cd-fill" id="abEFill"></div></div>
-    </div>
-  </div>
+  <!-- Hidden ammo elements kept for JS compatibility -->
+  <span id="rocketAmmo" style="display:none"></span>
+  <span id="beamAmmo" style="display:none"></span>
+  <span id="mineAmmo" style="display:none"></span>
+  <span id="abQFill" style="display:none"></span>
+  <span id="abEFill" style="display:none"></span>
+  <span id="abSlotQ" style="display:none"></span>
+  <span id="abSlotE" style="display:none"></span>
+  <span id="wepSlot1" style="display:none"></span>
+  <span id="wepSlot2" style="display:none"></span>
+  <span id="wepSlot3" style="display:none"></span>
+  <span id="wepSlot4" style="display:none"></span>
 
   <!-- Upgrade choice overlay -->
   <div id="upgradeOverlay">
@@ -566,7 +514,7 @@
 
   <div class="hint" id="hint" aria-hidden="true">
     <span class="pill">Orbit Synthesis</span>
-    Mover: <b>WASD</b>, <b>ESPACIO</b>: Dash, <b>CLIC</b>: Disparar · <b>1</b>:Láser <b>2</b>:Cohete <b>3</b>:Rayo <b>4</b>:Mina · <b>Q</b>:Escudo <b>E</b>:Sobrecarga
+    Mover: <b>WASD</b> · <b>ESPACIO</b>: Dash · <b>CLIC</b>: Disparar · Recoge powerups para desbloquear armas · <b>Q</b>: Escudo · <b>E</b>: Sobrecarga
   </div>
 
   <div class="overlay show" id="overlay" role="dialog" aria-modal="true">
@@ -807,11 +755,11 @@
       keys[e.key.toLowerCase()] = true;
       if (e.key === ' ') keys['space'] = true;
 
-      // Weapon switch
+      // Weapon switch — only if unlocked
       if (e.key === '1') game.activeWeapon = 1;
-      if (e.key === '2') game.activeWeapon = 2;
-      if (e.key === '3') game.activeWeapon = 3;
-      if (e.key === '4') game.activeWeapon = 4;
+      if (e.key === '2' && game.unlocked.rocket) game.activeWeapon = 2;
+      if (e.key === '3' && game.unlocked.beam)   game.activeWeapon = 3;
+      if (e.key === '4' && game.unlocked.mine)   game.activeWeapon = 4;
 
       // Abilities
       if (e.key.toLowerCase() === 'q') keys['q'] = true;
@@ -909,6 +857,16 @@
         mine:   { ammo: 3,  maxAmmo: 3,  reloadTimer: 0, reloadTime: 8.0 }
       },
 
+      // ── Unlocked weapons (start with only laser) ──
+      unlocked: {
+        laser:  true,
+        rocket: false,
+        beam:   false,
+        mine:   false,
+        shieldAbility: false,
+        surgeAbility:  false
+      },
+
       // ── Active abilities ──
       abilities: {
         shield: { cd: 0, maxCd: 8.0,  duration: 3.0,  active: 0 },   // Q
@@ -928,7 +886,9 @@
         speedBoost: 0,
         damageBoost: 0,
         shield: 0,
-        autofire: 0
+        autofire: 0,
+        plasma: 0,   // rapid fire mode (12s)
+        sniper: 0    // high damage single shot (12s)
       },
 
       powerupMsgTimer: 0
@@ -1194,26 +1154,40 @@
     }
 
     // ---------- Power-up Factory ----------
-    const POWERUP_TYPES = ['shield','multishot','speed','repair','damage','shipRepair','autofire','nuke'];
+    const POWERUP_TYPES = ['shield','multishot','speed','repair','damage','shipRepair','autofire','nuke','plasma','sniper','unlock_rocket','unlock_beam','unlock_mine','unlock_shieldab','unlock_surgeab'];
     const POWERUP_COLORS = {
-      shield:     'rgba(79,243,255,.95)',
-      multishot:  'rgba(255,207,90,.95)',
-      speed:      'rgba(82,255,159,.95)',
-      repair:     'rgba(255,79,240,.95)',
-      damage:     'rgba(255,59,92,.95)',
-      shipRepair: 'rgba(255,160,60,.95)',
-      autofire:   'rgba(200,255,100,.95)',
-      nuke:       'rgba(255,255,255,.95)'
+      shield:          'rgba(79,243,255,.95)',
+      multishot:       'rgba(255,207,90,.95)',
+      speed:           'rgba(82,255,159,.95)',
+      repair:          'rgba(255,79,240,.95)',
+      damage:          'rgba(255,59,92,.95)',
+      shipRepair:      'rgba(255,160,60,.95)',
+      autofire:        'rgba(200,255,100,.95)',
+      nuke:            'rgba(255,255,255,.95)',
+      plasma:          'rgba(79,200,255,.95)',
+      sniper:          'rgba(255,207,90,.95)',
+      unlock_rocket:   'rgba(255,130,50,.95)',
+      unlock_beam:     'rgba(82,255,159,.95)',
+      unlock_mine:     'rgba(255,207,90,.95)',
+      unlock_shieldab: 'rgba(79,243,255,.95)',
+      unlock_surgeab:  'rgba(255,207,90,.95)'
     };
     const POWERUP_LABELS = {
-      shield:     '🛡',
-      multishot:  '✦',
-      speed:      '⚡',
-      repair:     '♥',
-      damage:     '🔥',
-      shipRepair: '+',
-      autofire:   '◎',
-      nuke:       '💥'
+      shield:          '🛡',
+      multishot:       '✦',
+      speed:           '⚡',
+      repair:          '♥',
+      damage:          '🔥',
+      shipRepair:      '+',
+      autofire:        '◎',
+      nuke:            '💥',
+      plasma:          '🔵',
+      sniper:          '🎯',
+      unlock_rocket:   '🚀',
+      unlock_beam:     '⚡',
+      unlock_mine:     '💣',
+      unlock_shieldab: '🛡',
+      unlock_surgeab:  '🔆'
     };
     const POWERUP_ICONS = POWERUP_LABELS;
     function makePowerup(x, y, type){
@@ -1495,7 +1469,7 @@
         s.xp -= s.xpToNext;
         s.level++;
         s.xpToNext = 7 + s.level*4;
-        s.hitDmg = 10 + (s.level-1)*5.5;
+        s.hitDmg = 10 + (s.level-1)*7 + Math.floor((s.level-1)/3)*5; // +7/level, bonus +5 every 3 levels
         s.fireRate = Math.max(0.08, 0.18 - s.level*0.008);
         s.hpMax = 100 + (s.level - 1) * 20;   // +20 max HP per level
         s.hp = s.hpMax;                          // full heal on level-up
@@ -1550,6 +1524,15 @@
         const pool = ['shipRepair','shield','multishot','speed','damage','autofire'];
         // Rare nuke
         if (Math.random() < 0.05) pool.push('nuke');
+        // Weapon powerups: unlock from wave 3+, higher chance later
+        if (game.wave >= 3 && Math.random() < 0.18) pool.push('plasma');
+        if (game.wave >= 5 && Math.random() < 0.14) pool.push('sniper');
+        // Weapon UNLOCKS: always add locked weapons to pool so they can drop
+        if (!game.unlocked.rocket)   pool.push('unlock_rocket',  'unlock_rocket');
+        if (!game.unlocked.beam)     pool.push('unlock_beam',    'unlock_beam');
+        if (!game.unlocked.mine && game.wave >= 4) pool.push('unlock_mine', 'unlock_mine');
+        if (!game.unlocked.shieldAbility && game.wave >= 2) pool.push('unlock_shieldab');
+        if (!game.unlocked.surgeAbility  && game.wave >= 6) pool.push('unlock_surgeab');
         powerups.push(makePowerup(a.x, a.y, pool[randi(0, pool.length-1)]));
       }
 
@@ -1568,9 +1551,22 @@
       b.alive = false;
       game.bossActive = false;
 
-      // Always drop 2 powerups
+      // Always drop 2-3 powerups from boss
       powerups.push(makePowerup(b.x - 15, b.y, POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)]));
       powerups.push(makePowerup(b.x + 15, b.y, POWERUP_TYPES[randi(0, POWERUP_TYPES.length-1)]));
+      // Guaranteed weapon unlock from boss if still locked
+      const bossUnlockPool = [];
+      if (!game.unlocked.rocket) bossUnlockPool.push('unlock_rocket');
+      if (!game.unlocked.beam)   bossUnlockPool.push('unlock_beam');
+      if (!game.unlocked.mine)   bossUnlockPool.push('unlock_mine');
+      if (!game.unlocked.shieldAbility) bossUnlockPool.push('unlock_shieldab');
+      if (!game.unlocked.surgeAbility)  bossUnlockPool.push('unlock_surgeab');
+      if (bossUnlockPool.length > 0){
+        powerups.push(makePowerup(b.x, b.y - 20, bossUnlockPool[randi(0, bossUnlockPool.length-1)]));
+      } else {
+        const weaponDrops = ['plasma','sniper'];
+        powerups.push(makePowerup(b.x, b.y - 20, weaponDrops[randi(0, weaponDrops.length-1)]));
+      }
 
       giveXPToPlayer(3 + Math.floor(b.wave*0.5));
 
@@ -1694,6 +1690,16 @@
           game.buffs.autofire = 6;
           addFloater('◎ FUEGO AUTO 6s', s.x, s.y - 28, POWERUP_COLORS.autofire);
           break;
+        case 'plasma':
+          game.buffs.plasma = 12;
+          game.buffs.sniper = 0; // cancel sniper mode
+          addFloater('🔵 MODO PLASMA 12s', s.x, s.y - 28, POWERUP_COLORS.plasma);
+          break;
+        case 'sniper':
+          game.buffs.sniper = 12;
+          game.buffs.plasma = 0; // cancel plasma mode
+          addFloater('🎯 MODO SNIPER 12s', s.x, s.y - 28, POWERUP_COLORS.sniper);
+          break;
         case 'nuke':
           // Destroy all enemies on screen
           let nukeCount = 0;
@@ -1702,6 +1708,46 @@
           }
           addFloater(`💥 NUKE! ×${nukeCount}`, s.x, s.y - 28, POWERUP_COLORS.nuke);
           game.shake.mag = 20;
+          break;
+        case 'unlock_rocket':
+          if (!game.unlocked.rocket){
+            game.unlocked.rocket = true;
+            game.weapons.rocket.ammo = game.weapons.rocket.maxAmmo;
+            addFloater('🚀 COHETES DESBLOQUEADOS!', s.x, s.y - 36, POWERUP_COLORS.unlock_rocket);
+          } else {
+            game.weapons.rocket.ammo = Math.min(game.weapons.rocket.maxAmmo, game.weapons.rocket.ammo + 3);
+            addFloater('🚀 +3 COHETES', s.x, s.y - 28, POWERUP_COLORS.unlock_rocket);
+          }
+          break;
+        case 'unlock_beam':
+          if (!game.unlocked.beam){
+            game.unlocked.beam = true;
+            game.weapons.beam.energy = game.weapons.beam.maxEnergy;
+            addFloater('⚡ RAYO DESBLOQUEADO!', s.x, s.y - 36, POWERUP_COLORS.unlock_beam);
+          } else {
+            game.weapons.beam.energy = game.weapons.beam.maxEnergy;
+            addFloater('⚡ RAYO RECARGADO', s.x, s.y - 28, POWERUP_COLORS.unlock_beam);
+          }
+          break;
+        case 'unlock_mine':
+          if (!game.unlocked.mine){
+            game.unlocked.mine = true;
+            game.weapons.mine.ammo = game.weapons.mine.maxAmmo;
+            addFloater('💣 MINAS DESBLOQUEADAS!', s.x, s.y - 36, POWERUP_COLORS.unlock_mine);
+          } else {
+            game.weapons.mine.ammo = Math.min(game.weapons.mine.maxAmmo, game.weapons.mine.ammo + 2);
+            addFloater('💣 +2 MINAS', s.x, s.y - 28, POWERUP_COLORS.unlock_mine);
+          }
+          break;
+        case 'unlock_shieldab':
+          game.unlocked.shieldAbility = true;
+          game.abilities.shield.cd = 0;
+          addFloater('🛡 HABILIDAD ESCUDO (Q)', s.x, s.y - 36, POWERUP_COLORS.unlock_shieldab);
+          break;
+        case 'unlock_surgeab':
+          game.unlocked.surgeAbility = true;
+          game.abilities.surge.cd = 0;
+          addFloater('🔆 SOBRECARGA (E)', s.x, s.y - 36, POWERUP_COLORS.unlock_surgeab);
           break;
       }
       for (let k=0;k<16;k++){
@@ -1826,9 +1872,9 @@
         ship.spin = (ship.spin || 0 + dt * 2) % (Math.PI * 2);
 
         // ── Ability inputs ──
-        if (keys['q'] && !keys['q_used']){ keys['q_used'] = true; triggerShieldAbility(); }
+        if (keys['q'] && !keys['q_used']){ keys['q_used'] = true; if (game.unlocked.shieldAbility) triggerShieldAbility(); }
         if (!keys['q']) keys['q_used'] = false;
-        if (keys['e'] && !keys['e_used']){ keys['e_used'] = true; triggerSurgeAbility(); }
+        if (keys['e'] && !keys['e_used']){ keys['e_used'] = true; if (game.unlocked.surgeAbility) triggerSurgeAbility(); }
         if (!keys['e']) keys['e_used'] = false;
 
         // ── Tick ability cooldowns & active timers ──
@@ -1864,30 +1910,48 @@
         const aimDx = game.pointer.x - ship.x;
         const aimDy = game.pointer.y - ship.y;
         const aimAngle = Math.atan2(aimDy, aimDx);
-        // Nose position uses aimAngle so it matches the aim line perfectly
-        const bx = ship.x + Math.cos(aimAngle) * ship.r * 1.4;
-        const by = ship.y + Math.sin(aimAngle) * ship.r * 1.4;
+        // Bullets spawn from ship center — no offset that could cause drift
+        const bx = ship.x;
+        const by = ship.y;
 
         if (game.activeWeapon === 1 && firing && ship.fireCooldown <= 0){
-          ship.fireCooldown = ship.fireRate;
-          const spd = 520 + ship.level*10;
-          const shots = game.buffs.multiShot > 0 ? 3 : 1;
+          // Determine fire mode: sniper > plasma > normal
+          let fireRate = ship.fireRate;
+          let dmgMul = 1.0;
+          let projColor = 'rgba(79,243,255,.9)';
+          let projSize = 3;
+          let projSpeed = 520 + ship.level*10;
+          if (game.buffs.sniper > 0){
+            fireRate = ship.fireRate * 2.5;  // slower
+            dmgMul = 3.5;
+            projColor = 'rgba(255,207,90,.95)';
+            projSize = 7;
+            projSpeed = 820 + ship.level*14;
+          } else if (game.buffs.plasma > 0){
+            fireRate = Math.max(0.05, ship.fireRate * 0.35); // much faster
+            dmgMul = 0.9;
+            projColor = 'rgba(79,200,255,.95)';
+            projSize = 2;
+          }
+          ship.fireCooldown = fireRate;
+          const shots = (game.buffs.multiShot > 0 && game.buffs.sniper <= 0) ? 3 : 1;
           for (let k=0;k<shots;k++){
             const spread = (k-1) * 0.10;
             const a2 = aimAngle + spread;
-            let dmg = (ship.hitDmg * 0.7) * (game.buffs.damageBoost > 0 ? 2 : 1);
+            let dmg = ship.hitDmg * dmgMul * (game.buffs.damageBoost > 0 ? 2 : 1);
             if (game.upg.critChance > 0 && Math.random() < game.upg.critChance * 0.2){ dmg *= 2; addFloater('CRÍTICO!', bx, by, 'rgba(255,207,90,.95)'); }
-            const proj = makeProjectile(bx, by, Math.cos(a2)*spd, Math.sin(a2)*spd, dmg, false, ship.level);
-            proj.pierce = game.upg.laserPierce;   // pierce counter
-            proj.col = 'rgba(79,243,255,.9)';
+            const proj = makeProjectile(bx, by, Math.cos(a2)*projSpeed, Math.sin(a2)*projSpeed, dmg, false, ship.level);
+            proj.pierce = game.upg.laserPierce;
+            proj.col = projColor;
+            proj.r = projSize;
             projectiles.push(proj);
           }
           sfxLaser(ship.level);
-          for (let k=0;k<2;k++) addParticle(bx, by, rand(-20,20), rand(-20,20), rand(0.06,0.12), rand(1,2), 'rgba(79,243,255,.35)', 'rgba(79,243,255,.15)');
+          for (let k=0;k<2;k++) addParticle(bx, by, rand(-20,20), rand(-20,20), rand(0.06,0.12), rand(1,2), projColor, 'rgba(79,243,255,.15)');
         }
 
         // ── Secondary weapon: ROCKETS (2) ──
-        else if (game.activeWeapon === 2 && firing && ship.fireCooldown <= 0 && wR.ammo > 0){
+        else if (game.activeWeapon === 2 && game.unlocked.rocket && firing && ship.fireCooldown <= 0 && wR.ammo > 0){
           ship.fireCooldown = ship.fireRate * 1.6;
           wR.ammo--;
           if (wR.ammo < wR.maxAmmo && wR.reloadTimer <= 0) wR.reloadTimer = wR.reloadTime;
@@ -1905,7 +1969,7 @@
         }
 
         // ── Secondary weapon: BEAM (3) ──
-        else if (game.activeWeapon === 3){
+        else if (game.activeWeapon === 3 && game.unlocked.beam){
           wB.active = firing && wB.energy > 0;
           if (wB.active){
             wB.energy = Math.max(0, wB.energy - wB.drainRate * dt);
@@ -1934,7 +1998,7 @@
         }
 
         // ── Secondary weapon: MINES (4) ──
-        else if (game.activeWeapon === 4 && firing && ship.fireCooldown <= 0 && wM.ammo > 0){
+        else if (game.activeWeapon === 4 && game.unlocked.mine && firing && ship.fireCooldown <= 0 && wM.ammo > 0){
           ship.fireCooldown = 0.6;
           wM.ammo--;
           if (wM.ammo < wM.maxAmmo && wM.reloadTimer <= 0) wM.reloadTimer = wM.reloadTime;
@@ -2338,6 +2402,8 @@
       if (game.buffs.speedBoost > 0) game.buffs.speedBoost -= dt;
       if (game.buffs.damageBoost > 0) game.buffs.damageBoost -= dt;
       if (game.buffs.autofire > 0) game.buffs.autofire -= dt;
+      if (game.buffs.plasma > 0) game.buffs.plasma -= dt;
+      if (game.buffs.sniper > 0) game.buffs.sniper -= dt;
 
       // ── Mine Update ──
       for (let i=mines.length-1;i>=0;i--){
@@ -2430,7 +2496,7 @@
       lvlInEl.title = `Tipo: ${pt.name} | +HP:${game.planet.upgrades.hpBonus} | Regen:+${game.planet.upgrades.regenBonus.toFixed(2)}/s | Aura:+${Math.round(game.planet.upgrades.satAura*100)}%`;
       const hpPct = (game.planet.hp / game.planet.hpMax);
       hpFillEl.style.transform = `scaleX(${clamp(hpPct, 0, 1)})`;
-      hpTxtEl.textContent = `${Math.floor(hpPct*100)}%`;
+      hpTxtEl.textContent = `${Math.floor(game.planet.hp)}/${game.planet.hpMax}`;
 
       // Player ship HUD
       const sh = game.playerShip;
@@ -2438,7 +2504,7 @@
         const sPct = clamp(sh.hp / sh.hpMax, 0, 1);
         shipHpFillEl.style.transform = `scaleX(${sPct})`;
         shipHpFillEl.style.background = sPct > 0.4 ? '' : 'linear-gradient(90deg, rgba(255,59,92,.95), rgba(255,207,90,.85))';
-        if (shipHpTxtEl) shipHpTxtEl.textContent = `${Math.floor(sPct*100)}%`;
+        if (shipHpTxtEl) shipHpTxtEl.textContent = `${Math.floor(sh.hp)}/${sh.hpMax}`;
       }
       if (dashCdTxtEl){
         if (sh.dashCooldown > 0){
@@ -2450,20 +2516,44 @@
         }
       }
 
-      // ── Weapon + Ability HUD ──
-      const wSlots = [1,2,3,4];
-      wSlots.forEach(n => {
-        const el = $(`wepSlot${n}`);
-        if (el) el.classList.toggle('active', game.activeWeapon === n);
-      });
-      const raEl = $('rocketAmmo');
-      if (raEl) raEl.textContent = `${game.weapons.rocket.ammo}/${game.weapons.rocket.maxAmmo}${game.weapons.rocket.reloadTimer > 0 ? ' ↺' : ''}`;
-      const baEl = $('beamAmmo');
-      if (baEl){ const pct = Math.round(game.weapons.beam.energy/game.weapons.beam.maxEnergy*100); baEl.textContent = `${pct}%${pct < 100 ? ' ↺' : ''}`; }
-      const maEl = $('mineAmmo');
-      if (maEl) maEl.textContent = `${game.weapons.mine.ammo}/${game.weapons.mine.maxAmmo}${game.weapons.mine.reloadTimer > 0 ? ' ↺' : ''}`;
+      // ── Active Weapons HUD ──
+      const awSlots = $('activeWeaponsSlots');
+      if (awSlots){
+        awSlots.innerHTML = '';
+        const addSlot = (cls, icon, label, ammoText, isActive) => {
+          const d = document.createElement('div');
+          d.className = `aw-slot ${cls}${isActive ? ' active' : ''}`;
+          d.style.borderColor = isActive ? 'rgba(255,255,255,.6)' : '';
+          d.style.boxShadow = isActive ? '0 0 8px rgba(255,255,255,.18)' : '';
+          d.innerHTML = `${icon} <span style="font-size:10px">${label}</span>${ammoText ? ` <span class="aw-ammo">${ammoText}</span>` : ''}`;
+          awSlots.appendChild(d);
+        };
+        addSlot('laser',  '🔵', 'Láser [1]', null, game.activeWeapon === 1);
+        if (game.unlocked.rocket){
+          const rA = game.weapons.rocket;
+          addSlot('rocket','🚀', 'Cohete [2]', `${rA.ammo}/${rA.maxAmmo}${rA.reloadTimer>0?' ↺':''}`, game.activeWeapon === 2);
+        }
+        if (game.unlocked.beam){
+          const bPct = Math.round(game.weapons.beam.energy/game.weapons.beam.maxEnergy*100);
+          addSlot('beam', '⚡', 'Rayo [3]', `${bPct}%`, game.activeWeapon === 3);
+        }
+        if (game.unlocked.mine){
+          const mA = game.weapons.mine;
+          addSlot('mine', '💣', 'Mina [4]', `${mA.ammo}/${mA.maxAmmo}${mA.reloadTimer>0?' ↺':''}`, game.activeWeapon === 4);
+        }
+        if (game.unlocked.shieldAbility){
+          const abQ = game.abilities.shield;
+          const cdTxt = abQ.cd > 0 ? `${abQ.cd.toFixed(1)}s` : '✓';
+          addSlot('shield-ab', '🛡', `Escudo [Q]`, cdTxt, abQ.active > 0);
+        }
+        if (game.unlocked.surgeAbility){
+          const abE = game.abilities.surge;
+          const cdTxt = abE.cd > 0 ? `${abE.cd.toFixed(1)}s` : '✓';
+          addSlot('surge', '🔆', `Sobrecarga [E]`, cdTxt, abE.active > 0);
+        }
+      }
 
-      // Ability cooldown fills
+      // Ability cooldown fills (hidden elements kept for compat)
       const qFill = $('abQFill');
       if (qFill){
         const abQ = game.abilities.shield;
@@ -3104,6 +3194,8 @@
       if (game.buffs.speedBoost > 0) buffsActive.push(`⚡${Math.ceil(game.buffs.speedBoost)}s`);
       if (game.buffs.damageBoost > 0) buffsActive.push(`🔥${Math.ceil(game.buffs.damageBoost)}s`);
       if (game.buffs.autofire > 0) buffsActive.push(`◎${Math.ceil(game.buffs.autofire)}s`);
+      if (game.buffs.plasma > 0) buffsActive.push(`🔵PLASMA ${Math.ceil(game.buffs.plasma)}s`);
+      if (game.buffs.sniper > 0) buffsActive.push(`🎯SNIPER ${Math.ceil(game.buffs.sniper)}s`);
       if (buffsActive.length > 0){
         ctx.save();
         ctx.shadowBlur = 0;
@@ -3177,6 +3269,8 @@
       game.buffs.damageBoost = 0;
       game.buffs.shield = 0;
       game.buffs.autofire = 0;
+      game.buffs.plasma = 0;
+      game.buffs.sniper = 0;
       game.evolution = null;
       game.activeWeapon = 1;
       game.upgradeNextLevel = 3;
@@ -3186,6 +3280,14 @@
       w.rocket.ammo = w.rocket.maxAmmo; w.rocket.reloadTimer = 0;
       w.beam.energy = w.beam.maxEnergy; w.beam.active = false;
       w.mine.ammo = w.mine.maxAmmo;     w.mine.reloadTimer = 0;
+
+      // Reset unlocked — only laser from the start
+      game.unlocked.laser  = true;
+      game.unlocked.rocket = false;
+      game.unlocked.beam   = false;
+      game.unlocked.mine   = false;
+      game.unlocked.shieldAbility = false;
+      game.unlocked.surgeAbility  = false;
 
       // Reset abilities
       game.abilities.shield.cd = 0; game.abilities.shield.active = 0;
@@ -3263,7 +3365,8 @@
         'Tu nave gana experiencia al destruir enemigos y <b>sube de nivel</b>. Al nivel 10: <b>elige tu EVOLUCIÓN</b>.<br/>' +
         '<b>Jefes</b> cada 5 oleadas: mucha vida y disparan a la nave y a la Nave Madre.<br/>' +
         '<b>Nuevos enemigos</b>: Hunters (rosa) te persiguen directamente. ¡Usa el DASH!<br/>' +
-        '<b>Power-ups</b>: Escudo, Multi-disparo, Velocidad, Reparación (+25 HP), Daño doble.<br/>' +
+        '<b>Armas desbloqueables</b>: 🚀 Cohetes · ⚡ Rayo · 💣 Minas · 🛡 Escudo (Q) · 🔆 Sobrecarga (E). ¡Recoge los power-ups que sueltan los enemigos!<br/>' +
+        '<b>Modos de tiro</b>: 🔵 PLASMA (ráfaga rápida) · 🎯 SNIPER (disparo devastador). Drops raros de enemigos.<br/>' +
         'Observa el <b>minimapa</b> (abajo-izquierda) para anticipar amenazas.<br/>' +
         'Si la Nave Madre cae a 0, la partida termina.';
       startBtn.textContent = 'Jugar';
